@@ -50,8 +50,12 @@ PROVIDER=google streamlit run app.py
 3. One Routes `computeRoutes` call Sarasota to Orlando; compare with `providers/routes.py`.
 4. Confirm the assignment accepts running locally (it says hosted locally or via Streamlit Cloud).
 
+## Day-1 script
+`python scripts/day1_check.py` runs the checks above against the live APIs (1 Places call, 1 Routes
+call) and prints PASS / WARN / FAIL without ever printing a key.
+
 ## Team
-TODO: members and who owns each module (each member needs their own commits).
+Author: Gustavo Penna (individual project).
 
 ## Data storage
 Live EIA series are saved to `data/eia_weekly.csv` (public U.S. government data, OK to commit) and
