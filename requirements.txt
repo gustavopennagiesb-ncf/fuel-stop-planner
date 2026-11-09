@@ -1,0 +1,7 @@
+streamlit>=1.56
+pandas
+numpy
+requests
+plotly
+anthropic
+pytest
