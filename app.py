@@ -5,11 +5,13 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
+import streamlit.components.v1 as components
 
 import config
 from detour import (DEFAULTS, breakeven_miles, rank_stations, reference_price,
                     sensitivity_table)
 from forecast import lagged_corr, rolling_origin_eval, treat_series
+from gmap import build_map_html
 from llm import AnthropicProvider, ask, explain
 from services import compute_detours, load_series, load_trip
 
@@ -104,8 +106,10 @@ with tab_trip:
         c2.metric("Best station", best["name"], f"${best['price']:.2f}/gal")
         c3.metric("Net benefit", f"${best['net_benefit']:.2f}",
                   "detour pays off" if best["net_benefit"] > 0 else "do not detour")
-        show = pd.DataFrame(ranked)[["name", "price", "off_route_m", "extra_miles",
-                                     "extra_minutes", "net_benefit"]]
+        cols = ["name", "price", "off_route_m", "extra_miles", "extra_minutes", "net_benefit"]
+        if trip["mode"] == "google":
+            cols.append("detour_source")  # routes = exact Routes API, approx = out-and-back
+        show = pd.DataFrame(ranked)[cols]
         st.dataframe(show.head(10), hide_index=True, width="stretch")
         if trip["mode"] == "fixture":
             path = np.array(trip["path"])
@@ -123,10 +127,13 @@ with tab_trip:
                                        center=dict(lat=path[:, 0].mean(), lon=path[:, 1].mean()),
                                        zoom=7.2), height=520, margin=dict(l=0, r=0, t=0, b=0))
             st.plotly_chart(fig, width="stretch")
+        elif config.GOOGLE_MAPS_JS_KEY:
+            components.html(build_map_html(config.GOOGLE_MAPS_JS_KEY, trip["path"], ranked),
+                            height=520)
         else:
-            st.warning("Google mode: Places content must be shown on a Google map. The Maps "
-                       "JavaScript embed is not implemented yet (day-3 task), so only the "
-                       "table is shown.")
+            st.warning("Google mode: Places content must be shown on a Google map. Set "
+                       "GOOGLE_MAPS_JS_KEY (a referrer-restricted browser key) to show it; "
+                       "until then only the table is shown.")
 
 # ---------------------------------------------------------------- when to fill up
 with tab_when:
