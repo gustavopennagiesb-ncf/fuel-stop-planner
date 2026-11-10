@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+import requests
 import streamlit as st
 import streamlit.components.v1 as components
 
@@ -17,6 +18,7 @@ from detour import (DEFAULTS, breakeven_miles, rank_stations, reference_price,
 from forecast import lagged_corr, rolling_origin_eval, treat_series
 from gmap import build_map_html
 from llm import AnthropicProvider, ask, explain
+from providers import fueleconomy
 from services import compute_detours, load_series, load_trip
 
 st.set_page_config(page_title="Fuel Stop Planner", layout="wide")
@@ -29,10 +31,56 @@ if provider == "fixture" or not (config.GOOGLE_API_KEY and config.EIA_API_KEY):
     st.warning("FIXTURE MODE: all prices, stations and the route are SYNTHETIC test data, "
                "not real. Set PROVIDER=google plus EIA_API_KEY and GOOGLE_API_KEY for live data.")
 
+@st.cache_data(show_spinner=False, ttl=86400)
+def fe_menu(kind, *args):
+    return getattr(fueleconomy, kind)(*args)
+
+
+@st.cache_data(show_spinner=False, ttl=86400)
+def fe_vehicle(vehicle_id):
+    return fueleconomy.vehicle(vehicle_id)
+
+
+def car_lookup():
+    """fueleconomy.gov cascade year > make > model > version. Returns the vehicle or None."""
+    def pick(label, key, options, fmt=str):
+        return st.selectbox(label, [None] + list(options), key=key,
+                            format_func=lambda v: "Select..." if v is None else fmt(v))
+
+    year = pick("Year", "car_year", fe_menu("years"))
+    make = pick("Make", "car_make", fe_menu("makes", year) if year else [])
+    model = pick("Model", "car_model", fe_menu("models", year, make) if make else [])
+    versions = dict(fe_menu("options", year, make, model)) if model else {}
+    label = pick("Version", "car_version", versions)
+    return fe_vehicle(versions[label]) if label else None
+
+
+st.session_state.setdefault("mpg", DEFAULTS["mpg"])
 with st.sidebar:
     st.header("Your car and time")
     gallons = st.slider("Gallons to buy", 3.0, 25.0, DEFAULTS["gallons"], 0.5)
-    mpg = st.slider("Fuel economy (mpg)", 10.0, 50.0, DEFAULTS["mpg"], 0.5)
+    with st.expander("Look up my car (fueleconomy.gov)"):
+        try:
+            car = car_lookup()
+        except requests.RequestException:
+            car = None
+            st.caption("fueleconomy.gov is not reachable: set the mpg by hand below.")
+        if car and fueleconomy.is_electric(car):
+            st.warning("Electric car: EPA reports MPGe, not gallons. Set mpg by hand if you use "
+                       "a gas range extender or hybrid figures.")
+        elif car:
+            kind = st.radio("Which EPA figure", fueleconomy.KINDS, horizontal=True,
+                            help="city: stop-and-go (closest to delivery driving). highway: steady "
+                                 "speed. combined: 55% city / 45% highway.")
+            looked_up = fueleconomy.mpg_for(car, kind)
+            if looked_up and st.session_state.get("mpg_applied") != (car["id"], kind):
+                st.session_state["mpg"] = min(60.0, max(10.0, round(looked_up * 2) / 2))
+                st.session_state["mpg_applied"] = (car["id"], kind)
+            st.caption(f"{car['label']}: city {car['city']}, combined {car['combined']}, "
+                       f"highway {car['highway']} mpg (EPA label values; real mileage varies).")
+    mpg = st.slider("Fuel economy (mpg)", 10.0, 60.0, step=0.5, key="mpg")
+    tank = st.number_input("Tank size (gallons, optional)", 5.0, 40.0, 13.0, 0.5)
+    st.caption(f"About {tank * mpg:.0f} miles on a full tank at this mpg.")
     vot = st.slider("Value of your time ($/h)", 0.0, 60.0, DEFAULTS["value_of_time"], 1.0)
     speed = st.slider("Average speed on detours (mph)", 20.0, 70.0, DEFAULTS["speed_mph"], 1.0)
     buffer_km = st.slider("Search corridor width (km each side)", 1.0, 10.0, 3.0, 0.5)
