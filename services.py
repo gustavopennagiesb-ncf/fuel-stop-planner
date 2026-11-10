@@ -1,5 +1,6 @@
 """Glue between providers and the UI. One function per data need, switched by PROVIDER."""
 import os
+import time
 
 import pandas as pd
 
@@ -65,19 +66,45 @@ def load_trip(origin=None, destination=None, buffer_m=3000, provider: str = None
             "origin": origin, "destination": destination}
 
 
+DETOUR_TTL_S = 600
+_detour_memo = {}  # (origin, destination, lat, lng) -> (timestamp, extra_miles, extra_minutes)
+
+
+def _route_detour(trip, s, now):
+    """Extra miles/minutes of passing through station s, memoized so that moving a slider or
+    editing a price in the UI does not bill the Routes API again for the same station."""
+    key = (trip["origin"], trip["destination"], s["lat"], s["lng"])
+    hit = _detour_memo.get(key)
+    if hit and now - hit[0] < DETOUR_TTL_S:
+        return hit[1], hit[2]
+    via = routes.compute_route(config.GOOGLE_API_KEY, trip["origin"], trip["destination"],
+                               via=(s["lat"], s["lng"]))
+    d = trip["direct"]
+    miles = (via["distanceMeters"] - d["distanceMeters"]) / 1609.344
+    minutes = (via["seconds"] - d["seconds"]) / 60.0
+    _detour_memo[key] = (now, miles, minutes)
+    return miles, minutes
+
+
 def compute_detours(trip, top_n=None):
-    """Exact detours via Routes for the top N stations (N+1 calls in total). Fixture mode
-    keeps the geometric out-and-back approximation computed in detour.rank_stations."""
+    """Exact detours via Routes for the N cheapest priced stations (N extra calls, memoized).
+    Other stations, and any station whose call fails, keep the geometric out-and-back
+    approximation computed in detour.rank_stations; 'detour_source' says which one applies.
+    Fixture mode returns the stations unchanged."""
     if trip["mode"] != "google":
         return trip["stations"]
-    top_n = top_n or config.MAX_ROUTE_CALLS
-    out = []
-    for i, s in enumerate(trip["stations"]):
-        if i < top_n and s.get("price"):
-            via = routes.compute_route(config.GOOGLE_API_KEY, trip["origin"], trip["destination"],
-                                       via=(s["lat"], s["lng"]))
-            d = trip["direct"]
-            s = {**s, "extra_miles": (via["distanceMeters"] - d["distanceMeters"]) / 1609.344,
-                 "extra_minutes": (via["seconds"] - d["seconds"]) / 60.0}
-        out.append(s)
+    top_n = config.MAX_ROUTE_CALLS if top_n is None else top_n
+    cheapest = sorted((s for s in trip["stations"] if s.get("price")), key=lambda s: s["price"])
+    exact = {s["id"] for s in cheapest[:top_n]}
+    now, out = time.time(), []
+    for s in trip["stations"]:
+        source = "approx"
+        if s["id"] in exact:
+            try:
+                miles, minutes = _route_detour(trip, s, now)
+                s = {**s, "extra_miles": miles, "extra_minutes": minutes}
+                source = "routes"
+            except Exception:  # keep the demo alive: this station falls back to the estimate
+                pass
+        out.append({**s, "detour_source": source})
     return out
