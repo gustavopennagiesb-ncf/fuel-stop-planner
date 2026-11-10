@@ -9,10 +9,12 @@ URL = "https://routes.googleapis.com/directions/v2:computeRoutes"
 FIELD_MASK = "routes.duration,routes.distanceMeters,routes.polyline.encodedPolyline"
 
 
-def _waypoint(w):
-    if isinstance(w, str):
-        return {"address": w}
-    return {"location": {"latLng": {"latitude": w[0], "longitude": w[1]}}}
+def _waypoint(w, via=False):
+    wp = {"address": w} if isinstance(w, str) else {
+        "location": {"latLng": {"latitude": w[0], "longitude": w[1]}}}
+    if via:
+        wp["via"] = True  # pass through without a stop leg, so detours are not padded
+    return wp
 
 
 def build_body(origin, destination, via=None, traffic=True):
@@ -20,7 +22,7 @@ def build_body(origin, destination, via=None, traffic=True):
             "travelMode": "DRIVE",
             "routingPreference": "TRAFFIC_AWARE" if traffic else "TRAFFIC_UNAWARE"}
     if via:
-        body["intermediates"] = [_waypoint(via)]
+        body["intermediates"] = [_waypoint(via, via=True)]
     return body
 
 

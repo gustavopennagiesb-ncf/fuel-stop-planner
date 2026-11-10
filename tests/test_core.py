@@ -117,6 +117,12 @@ def test_routes_body_has_via_only_when_requested():
     assert "intermediates" in routes.build_body("A", "B", via=(27.0, -82.0))
 
 
+def test_routes_via_waypoint_is_not_a_stop():
+    wp = routes.build_body("A", "B", via=(27.0, -82.0))["intermediates"][0]
+    assert wp["via"] is True and wp["location"]["latLng"]["latitude"] == 27.0
+    assert "via" not in routes.build_body("A", "B")["origin"]
+
+
 # ---- fixtures and services -----------------------------------------------------------
 def test_fixture_trip_has_stations_and_is_marked_synthetic():
     trip = load_trip(provider="fixture")
