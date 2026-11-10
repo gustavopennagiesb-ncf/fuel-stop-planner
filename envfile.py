@@ -17,5 +17,5 @@ def load_dotenv(path=DEFAULT_PATH):
         key, value = line.split("=", 1)
         key = key.strip().removeprefix("export ").strip()
         value = value.strip().strip('"').strip("'").strip()
-        if key and value:                      # empty values never mask a real variable
-            os.environ.setdefault(key, value)
+        if key and value and not os.environ.get(key):  # a real shell value wins; empty is unset
+            os.environ[key] = value

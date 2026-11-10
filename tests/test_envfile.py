@@ -21,5 +21,14 @@ def test_load_dotenv_trims_spaces_and_quotes_and_keeps_existing(tmp_path, monkey
         monkeypatch.delenv(k)
 
 
+def test_load_dotenv_overrides_empty_shell_variable(tmp_path, monkeypatch):
+    f = tmp_path / ".env"
+    f.write_text("E_KEY=real\n")
+    monkeypatch.setenv("E_KEY", "")           # e.g. left behind by a broken `export $(...)`
+    load_dotenv(f)
+    import os
+    assert os.environ["E_KEY"] == "real"
+
+
 def test_load_dotenv_missing_file_is_a_noop(tmp_path):
     load_dotenv(tmp_path / "nope.env")
