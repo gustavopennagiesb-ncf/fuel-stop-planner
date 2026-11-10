@@ -25,8 +25,7 @@ pytest
 ## Run with real data
 ```bash
 cp .env.example .env        # fill keys; never commit .env
-export $(grep -v '^#' .env | xargs)
-PROVIDER=google streamlit run app.py
+PROVIDER=google streamlit run app.py   # app.py reads .env itself; shell variables win
 ```
 
 In `google` mode (day-1 check passed: Places returns U.S. fuel prices):

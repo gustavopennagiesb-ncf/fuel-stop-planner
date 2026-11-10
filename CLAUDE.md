@@ -10,7 +10,7 @@ Use the project venv (`.venv`, Python 3.9); the system `python` does not exist a
 .venv/bin/python -m pytest -q                       # all tests (no network, no keys)
 .venv/bin/python -m pytest tests/test_google_mode.py::test_detours_are_memoized_across_reruns -q   # one test
 streamlit run app.py                                # fixture mode (default, synthetic data)
-export $(grep -v '^#' .env | xargs); PROVIDER=google streamlit run app.py   # real data
+PROVIDER=google streamlit run app.py                # real data; app.py loads .env via envfile.py (shell vars win)
 .venv/bin/python scripts/day1_check.py              # live API sanity check (1 Places + 1 Routes call, billed)
 ```
 

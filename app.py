@@ -7,7 +7,11 @@ import plotly.graph_objects as go
 import streamlit as st
 import streamlit.components.v1 as components
 
-import config
+from envfile import load_dotenv
+
+load_dotenv()  # before `import config`, which reads the environment at import time
+
+import config  # noqa: E402
 from detour import (DEFAULTS, breakeven_miles, rank_stations, reference_price,
                     sensitivity_table)
 from forecast import lagged_corr, rolling_origin_eval, treat_series
