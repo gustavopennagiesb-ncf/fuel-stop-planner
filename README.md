@@ -13,6 +13,7 @@ Not financial advice: historical data and arithmetic only.
 | Weekly regular gasoline, Florida and U.S. | EIA Open Data API v2 (`petroleum/pri/gnd`), free key | route/codes from secondary sources, verify day 1 |
 | Station prices | Google Places API (New) `fuelOptions` | US coverage UNVERIFIED, verify day 1 |
 | Route and detour | Google Routes API v2 (`TRAFFIC_AWARE`) | request shape from docs, not yet run |
+| Car mpg | fueleconomy.gov web services (EPA/DOE), free, no key | city / combined / highway label values; electric cars report MPGe, so they are flagged |
 | LLM | Anthropic API (or template fallback) | optional key |
 
 ## Run without any key (fixture mode, synthetic data)
