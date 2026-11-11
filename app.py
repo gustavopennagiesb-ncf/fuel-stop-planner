@@ -13,6 +13,7 @@ from envfile import load_dotenv
 load_dotenv()  # before `import config`, which reads the environment at import time
 
 import config  # noqa: E402
+import driver
 from detour import (DEFAULTS, breakeven_miles, rank_stations, reference_price,
                     sensitivity_table)
 from forecast import lagged_corr, rolling_origin_eval, treat_series
@@ -110,8 +111,9 @@ except Exception as e:  # network or key problems should not crash the demo
 for w in trip["warnings"]:
     st.info(w)
 
-tab_help, tab_trip, tab_when, tab_eda, tab_sens, tab_ai = st.tabs(
-    ["How to use", "Where to stop", "When to fill up", "EDA", "Sensitivity", "AI"])
+tab_help, tab_trip, tab_when, tab_eda, tab_sens, tab_driver, tab_ai = st.tabs(
+    ["How to use", "Where to stop", "When to fill up", "EDA", "Sensitivity", "Driver mode",
+     "AI"])
 
 # ---------------------------------------------------------------- how to use
 with tab_help:
@@ -274,6 +276,70 @@ with tab_sens:
     st.plotly_chart(px.imshow(df_s, text_auto=True, aspect="auto",
                               labels=dict(x="price gap $/gal", y="value of time $/h",
                                           color="miles")), width="stretch")
+
+# ---------------------------------------------------------------- driver mode
+with tab_driver:
+    st.subheader("Driver mode: how far until I must refuel?")
+    c1, c2 = st.columns(2)
+    level = c1.select_slider("Tank level (eighths, read from the gauge)",
+                             options=list(range(0, 9)), value=4, key="driver_level")
+    reserve_label = c2.radio("Reserve", ["Standard", "Conservative (1/4 tank)"],
+                             key="driver_reserve_mode", horizontal=True)
+    c3, c4 = st.columns(2)
+    mph = c3.number_input("Miles per hour of work", min_value=1.0,
+                          value=driver.DEFAULT_MILES_PER_HOUR, step=1.0, key="driver_mph")
+    mpo = c4.number_input("Miles per order", min_value=1.0,
+                          value=driver.DEFAULT_MILES_PER_ORDER, step=1.0, key="driver_mpo")
+    reserve_gal = driver.reserve_gallons(
+        tank, "conservative" if reserve_label.startswith("Conservative") else "standard")
+    st.caption(f"Reserve: {reserve_gal:.1f} gal (about {reserve_gal * mpg:.0f} miles at your mpg)")
+
+    rng = driver.miles_until_reserve(level, tank, mpg, reserve_gal)
+    cases = [("Low", rng["low"]), ("Base", rng["base"]), ("High", rng["high"])]
+    for col, (name, m) in zip(st.columns(3), cases):
+        col.metric(f"{name} miles", f"{driver.round_miles(m)} mi")
+    rows = {"Miles": [], "Hours of work": [], "Orders": []}
+    for _, m in cases:
+        hours, orders = driver.to_hours_orders(m, mph, mpo)
+        rows["Miles"].append(driver.round_miles(m))
+        rows["Hours of work"].append(hours)
+        rows["Orders"].append(orders)
+    st.dataframe(pd.DataFrame(rows, index=[n for n, _ in cases]).T, width="stretch")
+
+    msg = driver.status(rng["low"], rng["base"])
+    (st.warning if "refuel soon" in msg else st.info)(msg)
+    st.caption("Estimates only. Use before or between orders, never while driving.")
+
+    with st.expander("How this is calculated"):
+        st.markdown(
+            "**Base miles** = (gallons now - reserve) x mpg. The app does not predict orders "
+            "and does not use DoorDash data: hours and orders are miles divided by the two "
+            "rates you type.\n\n"
+            "| Term | Plain-language meaning | Where the value comes from |\n"
+            "|---|---|---|\n"
+            "| Tank level in eighths | The needle read as 0 to 8. A reading is a band, not a "
+            "point: an eighth of a 12-gal tank is 1.5 gal, and reading by eye is off by up to "
+            "half an eighth (about 0.75 gal, about 22 miles at 30 mpg). | Rounding arithmetic "
+            "(sourced, our own math). Real gauge error is larger and not measured. |\n"
+            "| Reserve | Fuel you do not plan to use, so you are never stranded. Stored in "
+            "gallons, shown in miles with your mpg. | Standard max(15%, 2 gal): "
+            "assumption (the 2 gal floor sits near where cars' low-fuel light comes on). "
+            "Conservative 25%: sourced (AAA advice to refill below a quarter tank, fleet "
+            "policies). |\n"
+            "| Base miles | (gallons now - reserve) x mpg: how far you can go before touching "
+            "the reserve. | Formula, no assumption except your mpg. |\n"
+            "| Low case | One eighth less fuel than you read, and mpg x 0.85 (stop-and-go "
+            "uses more fuel than the label). | -1 eighth is a design choice; 0.85 is an "
+            "assumption. |\n"
+            "| High case | Half an eighth more fuel and mpg x 1.10. | Both are assumptions, "
+            "skewed low on purpose because running short costs more than running long. |\n"
+            "| Miles per hour of work | Miles you drive per hour online, including empty miles "
+            "to the restaurant. Turns miles into hours. | Default 15: assumption, no measured "
+            "source and no Florida data. Better: your odometer miles / online hours. |\n"
+            "| Miles per order | All miles in a shift divided by orders done. Turns miles "
+            "into approximate orders. | Default 8: assumption. Best: your own shift. |\n"
+            "| Stacked errors | Low and high combine every worst case at once, so the range "
+            "is wide on purpose. | Design choice. |\n")
 
 # ---------------------------------------------------------------- AI explanation
 with tab_ai:
