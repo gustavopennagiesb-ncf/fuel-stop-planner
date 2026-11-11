@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Commands
 
-Use the project venv (`.venv`, Python 3.9); the system `python` does not exist and system `python3` has no pytest. Streamlit is not installed in `.venv`, so `app.py` cannot be run or `AppTest`ed there without installing `requirements.txt` first.
+Use the project venv (`.venv`, Python 3.12, Streamlit installed); the system `python` does not exist and system `python3` has no pytest. `AppTest` works against `app.py` (see `tests/test_driver_tab.py`); patch `providers.fueleconomy._get` so the sidebar car lookup never hits the network.
 
 ```bash
 .venv/bin/python -m pytest -q                       # all tests (no network, no keys)
@@ -18,13 +18,14 @@ No linter or build step is configured. Run pytest before every commit; keep comm
 
 ## Architecture
 
-Streamlit app (`app.py`, 6 tabs) over a thin service layer. Flow: `config.py` (env flags) → `services.py` (switches on `PROVIDER`) → `providers/*` (HTTP + parsing, no UI) → pure-math modules (`geo.py`, `detour.py`, `forecast.py`) → `app.py`.
+Streamlit app (`app.py`, 7 tabs, including Driver mode) over a thin service layer. Flow: `config.py` (env flags) → `services.py` (switches on `PROVIDER`) → `providers/*` (HTTP + parsing, no UI) → pure-math modules (`geo.py`, `detour.py`, `forecast.py`, `driver.py`) → `app.py`.
 
 - **Provider switch**: `fixture` (default, synthetic, needs no keys) or `google`. `services.load_trip` / `load_series` silently degrade to fixtures when keys are missing, and `app.py` falls back to a fixture trip on any exception. Always pass `provider=` explicitly in tests instead of relying on `config.PROVIDER`.
 - **"Where" pipeline (google)**: Routes direct route → polyline decoded in `geo.py` → Places `searchNearby` around points sampled every 25 km (capped by `MAX_PLACES_CALLS`) → `corridor_filter` → `services.compute_detours` calls Routes with a `via` waypoint only for the `MAX_ROUTE_CALLS` cheapest priced stations, memoized 10 min in `_detour_memo` (so Streamlit reruns on slider moves do not bill again). Unpriced/failed stations keep the out-and-back estimate in `detour.rank_stations`; the `detour_source` field marks which one was used.
 - **Car lookup**: `providers/fueleconomy.py` feeds the sidebar's "Look up my car" expander. Picking a car (or switching city/combined/highway) writes `st.session_state["mpg"]` once per `(car id, kind)`, tracked in `mpg_applied`, so the mpg slider (`key="mpg"`) stays hand-editable. Menus are cached 24 h; if the API is down the slider still works. In `AppTest`, address widgets by `key=` and use `at.sidebar.radio` (the EDA tab also has a radio).
 - **Net benefit** (`detour.py`): `G*(p_ref - p_station) - extra_miles/mpg*p_station - vot*extra_min/60`; `p_ref` is the median price of stations within 800 m of the route, or a user-typed price. Users can edit any station price in the UI, and typed prices always work.
 - **"When" pipeline**: EIA weekly series (`providers/eia.py`) cached to `data/eia_weekly.csv` and reused if the API is down; `forecast.py` does rolling-origin evaluation against a naive baseline (the honest result is often "nothing beats naive").
+- **Driver mode** (`driver.py`, Driver tab): pure math, no UI or network. Miles until a fuel reserve as low/base/high, plus hours and orders. Its defaults (15 mi/h, 8 mi/order, 15%/2 gal reserve, mpg factors 0.85/1.10) are assumptions, documented per constant in the module docstring; Conservative reserve is max(25% of tank, Standard).
 - **LLM layer** (`llm.py`): the model only phrases numbers that the code computed; `validate()` checks every number in the output against the `facts` dict, retries, then falls back to a deterministic template. Facts must be pre-rounded to the precision the text uses. Works without `ANTHROPIC_API_KEY` (template only).
 
 ## Constraints that shape changes

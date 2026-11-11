@@ -40,11 +40,20 @@ In `google` mode (day-1 check passed: Places returns U.S. fuel prices):
   warning, and any load error falls back to fixtures instead of crashing.
 
 ## Structure
-- `app.py` UI (5 tabs) · `services.py` provider switch · `config.py` env flags
+- `app.py` UI (7 tabs, including Driver mode) · `services.py` provider switch · `config.py` env flags
 - `providers/` `eia.py`, `places.py`, `routes.py`, `fixtures.py` (synthetic)
-- `gmap.py` Google Maps JS embed · `geo.py` polyline + corridor filter · `detour.py` break-even math · `forecast.py` baselines
+- `gmap.py` Google Maps JS embed · `geo.py` polyline + corridor filter · `detour.py` break-even math · `forecast.py` baselines · `driver.py` driver-mode math
 - `llm.py` provider interface, number validator, template fallback
 - `tests/` unit tests
+
+## Driver mode
+The Driver mode tab answers one question: how many miles can I drive before the tank hits my
+reserve? It shows a low, base and high case, each with approximate hours of work and orders. It
+does not predict orders and uses no DoorDash data. Its defaults are assumptions, not measured
+values: 15 miles per hour of work, 8 miles per order, a reserve of 15% of the tank (at least
+2 gal; Conservative uses 25%), and mpg factors of 0.85 (low) and 1.10 (high). Miles per hour,
+miles per order, tank level, reserve mode, tank size and mpg are editable in the UI; the mpg
+factors are constants in `driver.py`.
 
 ## Rules that shape the code
 - Google Places content may not be stored (only place IDs): fixtures are synthetic, and no

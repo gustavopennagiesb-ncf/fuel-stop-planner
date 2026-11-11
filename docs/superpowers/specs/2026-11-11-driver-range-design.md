@@ -29,7 +29,7 @@ One new tab, **Driver mode**, plus one pure-math module. Nothing else changes.
 | Miles per hour of work | new number input | 15 |
 | Miles per order (all-in) | new number input | 8 |
 
-Reserve: Standard = max(15% of tank, 2 gal). Conservative = 25% of tank (AAA "refill below a
+Reserve: Standard = max(15% of tank, 2 gal). Conservative = max(25% of tank, Standard reserve) (AAA "refill below a
 quarter"). The reserve is stored in gallons and shown in miles using the user's mpg.
 
 ### Calculation
@@ -55,6 +55,7 @@ high; hours and orders rounded down, miles rounded to the nearest 5.
 - A plain status line: if base miles is 0, "At or below your reserve: refuel soon"; if low
   miles is 0 but base is not, "Close to your reserve"; otherwise "Room before reserve".
 - Caption: estimates only; set it before or between orders, never while driving.
+- A `How this is calculated` expander explaining the steps and the assumptions.
 
 ### Module
 
