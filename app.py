@@ -14,6 +14,7 @@ load_dotenv()  # before `import config`, which reads the environment at import t
 
 import config  # noqa: E402
 import driver
+import ui_style
 from detour import (DEFAULTS, breakeven_miles, rank_stations, reference_price,
                     sensitivity_table)
 from forecast import lagged_corr, rolling_origin_eval, treat_series
@@ -23,6 +24,7 @@ from providers import fueleconomy
 from services import compute_detours, load_series, load_trip
 
 st.set_page_config(page_title="Fuel Stop Planner", layout="wide")
+st.markdown(ui_style.CAPTION_CSS, unsafe_allow_html=True)  # captions: 3.8:1 -> above 4.5:1
 st.title("⛽ Fuel Stop Planner")
 st.caption("When to fill up (EIA weekly prices) and where (stations along your route, with "
            "detour break-even). Not financial advice: historical data and simple arithmetic.")
