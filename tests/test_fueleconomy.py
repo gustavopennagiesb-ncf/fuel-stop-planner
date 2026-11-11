@@ -75,3 +75,49 @@ def test_vehicle_fetches_by_id():
     s = FakeSession(CAMRY)
     assert fe.vehicle("47085", session=s)["combined"] == 26.0
     assert s.calls[0][0].endswith("/vehicle/47085")
+
+
+def test_malformed_menu_items_are_skipped_and_non_dict_payloads_are_an_error():
+    assert fe.parse_menu({"menuItem": [{"text": "A", "value": "a"}, {"text": "no value"}, "junk"]}) \
+        == [("A", "a")]
+    with pytest.raises(fe.FuelEconomyError):
+        fe.parse_menu(["not", "a", "dict"])
+    with pytest.raises(fe.FuelEconomyError):
+        fe.parse_vehicle("<html>oops</html>")
+
+
+def test_non_json_response_is_a_requests_error_so_callers_can_catch_one_type():
+    import requests
+
+    class HtmlSession:
+        def get(self, url, params=None, headers=None, timeout=None):
+            class R:
+                def raise_for_status(self):
+                    pass
+
+                def json(self):
+                    raise ValueError("not json")
+            return R()
+
+    with pytest.raises(requests.RequestException):
+        fe.years(session=HtmlSession())
+
+
+def test_requests_use_a_short_timeout():
+    s = FakeSession({"menuItem": []})
+    seen = {}
+    original = s.get
+
+    def spy(url, params=None, headers=None, timeout=None):
+        seen["timeout"] = timeout
+        return original(url, params, headers, timeout)
+
+    s.get = spy
+    fe.years(session=s)
+    assert seen["timeout"] <= 5
+
+
+def test_plug_in_hybrids_are_flagged_as_having_an_electric_part():
+    assert fe.has_electric_part(fe.parse_vehicle({**CAMRY, "fuelType": "Premium Gas or Electricity"}))
+    assert fe.has_electric_part(fe.parse_vehicle({**CAMRY, "fuelType": "Electricity"}))
+    assert not fe.has_electric_part(fe.parse_vehicle(CAMRY))

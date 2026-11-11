@@ -1,5 +1,7 @@
 """Streamlit app: when and where to fill up, with detour break-even and a validated LLM
 explanation. Runs without any key in fixture mode (synthetic data, clearly labelled)."""
+import time
+
 import numpy as np
 import pandas as pd
 import plotly.express as px
@@ -22,6 +24,8 @@ from gmap import build_map_html
 from llm import AnthropicProvider, ask, explain
 from providers import fueleconomy
 from services import compute_detours, load_series, load_trip
+
+FE_RETRY_S = 60  # seconds before the car lookup is tried again after fueleconomy.gov failed
 
 st.set_page_config(page_title="Fuel Stop Planner", layout="wide")
 st.markdown(ui_style.CAPTION_CSS, unsafe_allow_html=True)  # captions: 3.8:1 -> above 4.5:1
@@ -91,15 +95,26 @@ with st.sidebar:
              "more. For example, a 10 cent/gal gap on 12 gallons saves $1.20 before the detour "
              "costs.")
     with st.expander("Look up my car (fueleconomy.gov)"):
-        try:
-            car = car_lookup()
-        except requests.RequestException:
-            car = None
-            st.caption("fueleconomy.gov is not reachable: set the mpg by hand below.")
+        car = None
+        if time.time() < st.session_state.get("fe_down_until", 0.0):
+            # After a failure, do not retry on every rerun (each slider move would wait for the
+            # timeout again); the lookup is tried again after FE_RETRY_S.
+            st.caption("fueleconomy.gov is not reachable: set the mpg by hand below. The app "
+                       "tries again in about a minute.")
+        else:
+            try:
+                car = car_lookup()
+            except requests.RequestException:  # includes unusable responses (FuelEconomyError)
+                st.session_state["fe_down_until"] = time.time() + FE_RETRY_S
+                st.caption("fueleconomy.gov is not reachable: set the mpg by hand below. The "
+                           "app tries again in about a minute.")
         if car and fueleconomy.is_electric(car):
             st.warning("Electric car: EPA reports MPGe, not gallons. Set mpg by hand if you use "
                        "a gas range extender or hybrid figures.")
         elif car:
+            if fueleconomy.has_electric_part(car):
+                st.warning("Plug-in hybrid: the EPA figures blend electricity (MPGe) with "
+                           "gasoline, so they overstate gasoline-only mpg. Check the mpg by hand.")
             kind = st.radio("Which EPA figure", fueleconomy.KINDS, horizontal=True,
                             help="city: stop-and-go (closest to delivery driving). highway: steady "
                                  "speed. combined: 55% city / 45% highway.")

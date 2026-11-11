@@ -9,22 +9,35 @@ import requests
 
 BASE = "https://www.fueleconomy.gov/ws/rest/vehicle"
 KINDS = ("combined", "city", "highway")
+TIMEOUT_S = 5  # a UI call: fail fast instead of freezing the page while the service is down
+
+
+class FuelEconomyError(requests.RequestException):
+    """The service answered with something that is not the expected JSON shape. It subclasses
+    RequestException so a caller handles "unreachable" and "unusable" with one except."""
 
 
 def _get(path, params=None, session=None):
     s = session or requests
-    r = s.get(f"{BASE}/{path}", params=params, headers={"Accept": "application/json"}, timeout=20)
+    r = s.get(f"{BASE}/{path}", params=params, headers={"Accept": "application/json"},
+              timeout=TIMEOUT_S)
     r.raise_for_status()
-    return r.json()
+    try:
+        return r.json()
+    except ValueError as e:
+        raise FuelEconomyError(f"fueleconomy.gov did not return JSON: {e}") from e
 
 
 def parse_menu(payload):
     """The service returns a list, a single object (one choice) or nothing; always give a
     list of (text, value) pairs."""
+    if payload is not None and not isinstance(payload, dict):
+        raise FuelEconomyError("unexpected menu response")
     items = (payload or {}).get("menuItem") or []
     if isinstance(items, dict):
         items = [items]
-    return [(i["text"], i["value"]) for i in items]
+    return [(i["text"], i["value"]) for i in items
+            if isinstance(i, dict) and "text" in i and "value" in i]
 
 
 def years(session=None):
@@ -53,6 +66,8 @@ def _mpg(value):
 
 
 def parse_vehicle(payload):
+    if not isinstance(payload, dict):
+        raise FuelEconomyError("unexpected vehicle response")
     return {"id": str(payload.get("id", "")),
             "label": f"{payload.get('year', '?')} {payload.get('make', '?')} {payload.get('model', '?')}",
             "fuel_type": payload.get("fuelType") or "",
@@ -74,3 +89,9 @@ def mpg_for(veh, kind="combined"):
 def is_electric(veh):
     """Pure EVs report MPGe (energy equivalent), which is not usable as gallons per mile."""
     return veh.get("fuel_type", "").strip().lower() == "electricity"
+
+
+def has_electric_part(veh):
+    """True for pure EVs and for plug-in hybrids: their EPA figures blend electricity (MPGe) with
+    gasoline, so they are not gasoline-only mpg."""
+    return "electricity" in veh.get("fuel_type", "").lower()
