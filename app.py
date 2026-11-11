@@ -59,7 +59,10 @@ def car_lookup():
 st.session_state.setdefault("mpg", DEFAULTS["mpg"])
 with st.sidebar:
     st.header("Your car and time")
-    gallons = st.slider("Gallons to buy", 3.0, 25.0, DEFAULTS["gallons"], 0.5)
+    gallons = st.slider("Gallons to buy", 3.0, 25.0, DEFAULTS["gallons"], 0.5,
+                        help="How much fuel you plan to put in at the stop. Bigger fills make a "
+                             "price gap worth more. For example, a 10 cent/gal gap on 12 gallons "
+                             "saves $1.20 before the detour costs.")
     with st.expander("Look up my car (fueleconomy.gov)"):
         try:
             car = car_lookup()
@@ -83,9 +86,17 @@ with st.sidebar:
     tank = st.number_input("Tank size (gallons)", 5.0, 40.0, 13.0, 0.5,
                            key="tank")
     st.caption(f"About {tank * mpg:.0f} miles on a full tank at this mpg.")
-    vot = st.slider("Value of your time ($/h)", 0.0, 60.0, DEFAULTS["value_of_time"], 1.0)
-    speed = st.slider("Average speed on detours (mph)", 20.0, 70.0, DEFAULTS["speed_mph"], 1.0)
-    buffer_km = st.slider("Search corridor width (km each side)", 1.0, 10.0, 3.0, 0.5)
+    vot = st.slider("Value of your time ($/h)", 0.0, 60.0, DEFAULTS["value_of_time"], 1.0,
+                    help="What an hour of your time is worth to you; the app charges detour "
+                         "minutes at this rate. For example, at $20/h a 10 minute detour costs "
+                         "about $3.33.")
+    speed = st.slider("Average speed on detours (mph)", 20.0, 70.0, DEFAULTS["speed_mph"], 1.0,
+                      help="Used to turn detour miles into detour minutes. For example, 2 extra "
+                           "miles at 30 mph is 4 minutes.")
+    buffer_km = st.slider("Search corridor width (km each side)", 1.0, 10.0, 3.0, 0.5,
+                          help="How far from your route a station can be and still be listed. "
+                               "For example, 3 km each side searches a 6 km wide strip along "
+                               "the route.")
     origin = destination = None
     if provider == "google" and config.GOOGLE_API_KEY:
         origin = st.text_input("Origin", "Sarasota, FL")
@@ -120,23 +131,50 @@ tab_help, tab_trip, tab_when, tab_eda, tab_sens, tab_driver, tab_ai = st.tabs(
 with tab_help:
     st.subheader("How to use this app")
     st.markdown(
-        "1. **Where to stop**: set gallons, fuel economy and the value of your time in the "
-        "sidebar. Edit any station price in the table (typed prices always work). The app "
-        "ranks stations by *net benefit* = fuel saved minus the extra fuel and time of the "
-        "detour.\n"
-        "2. **When to fill up**: weekly Florida/U.S. prices and a check of whether any simple "
-        "forecast beats 'next week = this week'.\n"
-        "3. **EDA**: missing-data and outlier treatment (before/after), distributions and "
-        "correlations of the EIA series, plus an AI summary.\n"
-        "4. **Sensitivity**: how many extra miles a detour is worth for each price gap.\n"
-        "5. **AI**: a plain-language explanation and a question box. Every number the model "
-        "writes is checked against the calculation; if it cannot be traced, a template is used.\n\n"
+        "**Start in the sidebar:** pick your car (or set the mpg), your tank size and how much "
+        "your time is worth. Hover the small (?) next to a control for a tip. Every tab reads "
+        "those values.\n\n"
+        "**Which tab should I open?**\n"
+        "- *I am on a trip and want the best station on the way* → **Where to stop**. Edit any "
+        "price in the table (typed prices always work). The app ranks stations by net benefit: "
+        "fuel saved minus the extra fuel and time of the detour.\n"
+        "- *I deliver (DoorDash and similar) and want to know how far I can go before "
+        "refueling* → **Driver mode**. Enter your tank level; it shows miles, hours of work and "
+        "orders left before your reserve. It does not predict orders.\n"
+        "- *Is this a good week to fill up?* → **When to fill up**: weekly Florida/U.S. prices "
+        "and a check of whether any simple forecast beats 'next week = this week'.\n"
+        "- *How much is a detour worth?* → **Sensitivity**: extra miles a detour is worth for "
+        "each price gap.\n"
+        "- *Where does the price data come from and is it clean?* → **EDA**: missing-data and "
+        "outlier treatment (before/after), distributions and correlations of the EIA series.\n"
+        "- *Explain it in plain words* → **AI**: a plain-language explanation and a question "
+        "box. Every number the model writes is checked against the calculation; if it cannot "
+        "be traced, a template is used.\n\n"
         "Data: EIA Open Data API v2 (weekly retail gasoline, JSON) and Google Places/Routes "
         "(stations, route). Without keys the app runs on **synthetic** data and says so. "
         "Not financial advice.")
+    with st.expander("Glossary"):
+        st.markdown(
+            "- **Net benefit**: dollars saved by filling at a cheaper station, minus the fuel "
+            "and the time cost of getting there. Positive means the detour pays off.\n"
+            "- **Reference price**: what you would pay without detouring; the median price of "
+            "stations within 800 m of the route, or a price you type.\n"
+            "- **Detour source**: `routes` is an exact detour from the Google Routes API; "
+            "`approx` is an out-and-back estimate used when no exact detour was fetched.\n"
+            "- **Value of time**: dollars per hour you assign to your time; detour minutes are "
+            "charged at this rate.\n"
+            "- **Naive forecast**: 'next week's price = this week's price'. A forecast is only "
+            "useful if it beats this.\n"
+            "- **EDA**: exploratory data analysis, a first look at the data's gaps, outliers "
+            "and shape.\n"
+            "- **Reserve**: fuel you do not plan to use (Driver mode), so you are never "
+            "stranded.\n"
+            "- **MPGe**: the electric-car equivalent of mpg; not gallons.")
 
 # ---------------------------------------------------------------- where to stop
 with tab_trip:
+    st.caption("What this tab answers: which station on your route is worth a detour. Start by "
+               "checking the prices below; the ranking updates as you edit them.")
     stations = trip["stations"]
     st.subheader("Station prices (edit any price: typed prices always work)")
     table = pd.DataFrame([{"id": s["id"], "name": s["name"], "price": s["price"]}
@@ -165,7 +203,13 @@ with tab_trip:
         if trip["mode"] == "google":
             cols.append("detour_source")  # routes = exact Routes API, approx = out-and-back
         show = pd.DataFrame(ranked)[cols]
-        st.dataframe(show.head(10), hide_index=True, width="stretch")
+        st.dataframe(show.head(10), hide_index=True, width="stretch", column_config={
+            "name": "Station", "price": st.column_config.NumberColumn("Price ($/gal)"),
+            "off_route_m": st.column_config.NumberColumn("Off route (m)"),
+            "extra_miles": st.column_config.NumberColumn("Extra miles"),
+            "extra_minutes": st.column_config.NumberColumn("Extra minutes"),
+            "net_benefit": st.column_config.NumberColumn("Net benefit ($)"),
+            "detour_source": "Detour source"})
         if trip["mode"] == "fixture":
             path = np.array(trip["path"])
             fig = go.Figure()
@@ -192,6 +236,9 @@ with tab_trip:
 
 # ---------------------------------------------------------------- when to fill up
 with tab_when:
+    st.caption("What this tab answers: is it worth timing your fill-up to the weekly price? "
+               "It tests whether any forecast beats the naive guess that next week equals this "
+               "week.")
     st.subheader(f"Weekly regular gasoline, $/gal ({series_label})")
     s_fl = series["florida"].dropna()
     st.line_chart(series[["florida", "us"]].dropna().tail(260))
@@ -206,6 +253,8 @@ with tab_when:
 
 # ---------------------------------------------------------------- EDA
 with tab_eda:
+    st.caption("What this tab answers: is the weekly price data clean and what does it look "
+               "like? Check gaps, outliers and distributions before trusting any forecast.")
     st.subheader("Exploratory analysis of weekly gasoline prices")
     c_a, c_b = st.columns(2)
     z_thr = c_a.slider("Outlier threshold (SD of weekly change)", 2.0, 5.0, 3.0, 0.5)
@@ -266,6 +315,8 @@ with tab_eda:
 
 # ---------------------------------------------------------------- sensitivity
 with tab_sens:
+    st.caption("What this tab answers: how many extra miles of detour a given price gap is "
+               "worth, at your mpg and value of time (set in the sidebar).")
     st.subheader("How far is a detour worth it?")
     st.write("Break-even extra miles for a price gap (columns, $/gal) and value of time "
              "(rows, $/h), using your gallons, mpg and speed.")
@@ -280,6 +331,8 @@ with tab_sens:
 
 # ---------------------------------------------------------------- driver mode
 with tab_driver:
+    st.caption("What this tab answers: how many miles, hours of work and orders you can do "
+               "before reaching your fuel reserve. Set your tank level first.")
     st.subheader("Driver mode: how far until I must refuel?")
     c1, c2 = st.columns(2)
     level = c1.select_slider("Tank level (eighths, read from the gauge)",
@@ -357,6 +410,8 @@ with tab_driver:
 
 # ---------------------------------------------------------------- AI explanation
 with tab_ai:
+    st.caption("What this tab answers: what the numbers mean in plain words. The text is "
+               "checked against the calculation; press the button to generate it.")
     st.subheader("Plain-language explanation (numbers verified against the calculation)")
     if not ranked:
         st.info("Add at least one station price first.")
