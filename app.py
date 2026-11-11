@@ -80,7 +80,8 @@ with st.sidebar:
             st.caption(f"{car['label']}: city {car['city']}, combined {car['combined']}, "
                        f"highway {car['highway']} mpg (EPA label values; real mileage varies).")
     mpg = st.slider("Fuel economy (mpg)", 10.0, 60.0, step=0.5, key="mpg")
-    tank = st.number_input("Tank size (gallons, optional)", 5.0, 40.0, 13.0, 0.5)
+    tank = st.number_input("Tank size (gallons, optional)", 5.0, 40.0, 13.0, 0.5,
+                           key="tank")
     st.caption(f"About {tank * mpg:.0f} miles on a full tank at this mpg.")
     vot = st.slider("Value of your time ($/h)", 0.0, 60.0, DEFAULTS["value_of_time"], 1.0)
     speed = st.slider("Average speed on detours (mph)", 20.0, 70.0, DEFAULTS["speed_mph"], 1.0)
@@ -324,8 +325,9 @@ with tab_driver:
             "| Reserve | Fuel you do not plan to use, so you are never stranded. Stored in "
             "gallons, shown in miles with your mpg. | Standard max(15%, 2 gal): "
             "assumption (the 2 gal floor sits near where cars' low-fuel light comes on). "
-            "Conservative 25%: sourced (AAA advice to refill below a quarter tank, fleet "
-            "policies). |\n"
+            "Conservative max(25% of tank, Standard reserve): the quarter-tank idea is "
+            "sourced (AAA advice to refill below a quarter tank, fleet policies); the floor "
+            "keeps small tanks at least at the Standard reserve. |\n"
             "| Base miles | (gallons now - reserve) x mpg: how far you can go before touching "
             "the reserve. | Formula, no assumption except your mpg. |\n"
             "| Low case | One eighth less fuel than you read, and mpg x 0.85 (stop-and-go "

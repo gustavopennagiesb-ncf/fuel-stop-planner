@@ -46,3 +46,20 @@ def test_reserve_mode_conservative_not_more_miles(at):
     at.radio(key="driver_reserve_mode").set_value("Conservative (1/4 tank)").run()
     assert not at.exception
     assert _miles(at) <= standard
+
+
+@pytest.mark.parametrize("tank,mpg", [(5.0, 10.0), (5.0, 60.0), (40.0, 10.0), (40.0, 60.0)])
+@pytest.mark.parametrize("level", [0, 8])
+def test_extreme_tank_and_mpg_never_negative(at, tank, mpg, level):
+    at.number_input(key="tank").set_value(tank)
+    at.slider(key="mpg").set_value(mpg)
+    at.select_slider(key="driver_level").set_value(level).run()
+    assert not at.exception
+    for label in ("Low miles", "Base miles", "High miles"):
+        value = next(m for m in at.metric if m.label == label).value
+        assert int(value.split()[0].replace(",", "")) >= 0
+
+
+def test_expander_states_conservative_rule_correctly(at):
+    text = " ".join(m.value for m in at.markdown)
+    assert "max(25% of tank, Standard reserve)" in text
