@@ -56,13 +56,38 @@ def car_lookup():
     return fe_vehicle(versions[label]) if label else None
 
 
+def slider_with_number(label, lo, hi, default, step, key, help=None):
+    """A slider plus a box to type the exact value. The slider's own session-state `key` is the
+    value everyone reads; the box (`{key}_num`) mirrors it and, when typed into, writes back to
+    it (clamped to the slider's range). Setting either from elsewhere, e.g. the car lookup
+    writing `mpg`, shows up in both."""
+    num_key = f"{key}_num"
+    st.session_state.setdefault(key, float(default))
+
+    def typed():
+        v = st.session_state.get(num_key)
+        if v is not None:
+            st.session_state[key] = min(hi, max(lo, float(v)))
+
+    left, right = st.columns([3, 2], vertical_alignment="bottom")
+    with left:
+        value = st.slider(label, lo, hi, step=step, key=key, help=help)
+    st.session_state[num_key] = value
+    with right:
+        st.number_input(f"{label}: exact value", lo, hi, step=step, key=num_key,
+                        on_change=typed, label_visibility="collapsed")
+    return value
+
+
 st.session_state.setdefault("mpg", DEFAULTS["mpg"])
 with st.sidebar:
     st.header("Your car and time")
-    gallons = st.slider("Gallons to buy", 3.0, 25.0, DEFAULTS["gallons"], 0.5,
-                        help="How much fuel you plan to put in at the stop. Bigger fills make a "
-                             "price gap worth more. For example, a 10 cent/gal gap on 12 gallons "
-                             "saves $1.20 before the detour costs.")
+    st.caption("Drag a slider or type the exact value in the box beside it.")
+    gallons = slider_with_number(
+        "Gallons to buy", 3.0, 25.0, DEFAULTS["gallons"], 0.5, "gallons",
+        help="How much fuel you plan to put in at the stop. Bigger fills make a price gap worth "
+             "more. For example, a 10 cent/gal gap on 12 gallons saves $1.20 before the detour "
+             "costs.")
     with st.expander("Look up my car (fueleconomy.gov)"):
         try:
             car = car_lookup()
@@ -82,21 +107,22 @@ with st.sidebar:
                 st.session_state["mpg_applied"] = (car["id"], kind)
             st.caption(f"{car['label']}: city {car['city']}, combined {car['combined']}, "
                        f"highway {car['highway']} mpg (EPA label values; real mileage varies).")
-    mpg = st.slider("Fuel economy (mpg)", 10.0, 60.0, step=0.5, key="mpg")
+    mpg = slider_with_number("Fuel economy (mpg)", 10.0, 60.0, DEFAULTS["mpg"], 0.5, "mpg")
     tank = st.number_input("Tank size (gallons)", 5.0, 40.0, 13.0, 0.5,
                            key="tank")
     st.caption(f"About {tank * mpg:.0f} miles on a full tank at this mpg.")
-    vot = st.slider("Value of your time ($/h)", 0.0, 60.0, DEFAULTS["value_of_time"], 1.0,
-                    help="What an hour of your time is worth to you; the app charges detour "
-                         "minutes at this rate. For example, at $20/h a 10 minute detour costs "
-                         "about $3.33.")
-    speed = st.slider("Average speed on detours (mph)", 20.0, 70.0, DEFAULTS["speed_mph"], 1.0,
-                      help="Used to turn detour miles into detour minutes. For example, 2 extra "
-                           "miles at 30 mph is 4 minutes.")
-    buffer_km = st.slider("Search corridor width (km each side)", 1.0, 10.0, 3.0, 0.5,
-                          help="How far from your route a station can be and still be listed. "
-                               "For example, 3 km each side searches a 6 km wide strip along "
-                               "the route.")
+    vot = slider_with_number(
+        "Value of your time ($/h)", 0.0, 60.0, DEFAULTS["value_of_time"], 1.0, "vot",
+        help="What an hour of your time is worth to you; the app charges detour minutes at this "
+             "rate. For example, at $20/h a 10 minute detour costs about $3.33.")
+    speed = slider_with_number(
+        "Average speed on detours (mph)", 20.0, 70.0, DEFAULTS["speed_mph"], 1.0, "speed",
+        help="Used to turn detour miles into detour minutes. For example, 2 extra miles at 30 "
+             "mph is 4 minutes.")
+    buffer_km = slider_with_number(
+        "Search corridor width (km each side)", 1.0, 10.0, 3.0, 0.5, "buffer_km",
+        help="How far from your route a station can be and still be listed. For example, 3 km "
+             "each side searches a 6 km wide strip along the route.")
     origin = destination = None
     if provider == "google" and config.GOOGLE_API_KEY:
         origin = st.text_input("Origin", "Sarasota, FL")
