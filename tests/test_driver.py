@@ -57,3 +57,33 @@ def test_level_is_clamped_to_zero_and_eight():
     assert (miles_until_reserve(9, 13, 25, 2.0)["base"]
             == miles_until_reserve(8, 13, 25, 2.0)["base"])
     assert miles_until_reserve(-1, 13, 25, 2.0)["base"] == 0
+
+
+def test_round_miles_nearest_five_half_up():
+    assert driver.round_miles(112.5) == 115
+    assert driver.round_miles(112.4) == 110
+    assert driver.round_miles(0) == 0
+    assert driver.round_miles(2.4) == 0
+    assert driver.round_miles(2.5) == 5
+
+
+def test_hours_and_orders_round_down():
+    assert driver.to_hours_orders(112.5, 15, 8) == (7, 14)
+
+
+def test_zero_miles_gives_zero():
+    assert driver.to_hours_orders(0, 15, 8) == (0, 0)
+    assert driver.to_hours_orders(-10, 15, 8) == (0, 0)
+
+
+def test_nonpositive_rates_raise():
+    with pytest.raises(ValueError):
+        driver.to_hours_orders(100, 0, 8)
+    with pytest.raises(ValueError):
+        driver.to_hours_orders(100, 15, -1)
+
+
+def test_status_three_states():
+    assert driver.status(0, 0) == "At or below your reserve: refuel soon"
+    assert driver.status(0, 40) == "Close to your reserve"
+    assert driver.status(30, 100) == "Room before reserve"
