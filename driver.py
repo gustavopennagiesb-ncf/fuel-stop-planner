@@ -65,6 +65,7 @@ def to_hours_orders(miles: float, miles_per_hour: float, miles_per_order: float)
         raise ValueError("miles_per_hour and miles_per_order must be positive")
     if miles <= 0:
         return (0, 0)
+    miles = round(miles, 6)  # absorb float noise such as 254.99999999999997
     return (int(miles // miles_per_hour), int(miles // miles_per_order))
 
 

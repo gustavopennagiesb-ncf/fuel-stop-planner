@@ -80,7 +80,7 @@ with st.sidebar:
             st.caption(f"{car['label']}: city {car['city']}, combined {car['combined']}, "
                        f"highway {car['highway']} mpg (EPA label values; real mileage varies).")
     mpg = st.slider("Fuel economy (mpg)", 10.0, 60.0, step=0.5, key="mpg")
-    tank = st.number_input("Tank size (gallons, optional)", 5.0, 40.0, 13.0, 0.5,
+    tank = st.number_input("Tank size (gallons)", 5.0, 40.0, 13.0, 0.5,
                            key="tank")
     st.caption(f"About {tank * mpg:.0f} miles on a full tank at this mpg.")
     vot = st.slider("Value of your time ($/h)", 0.0, 60.0, DEFAULTS["value_of_time"], 1.0)
@@ -286,11 +286,15 @@ with tab_driver:
                              options=list(range(0, 9)), value=4, key="driver_level")
     reserve_label = c2.radio("Reserve", ["Standard", "Conservative (1/4 tank)"],
                              key="driver_reserve_mode", horizontal=True)
+    st.caption(f"Using tank {tank} gal and {mpg} mpg from the sidebar: check both.")
     c3, c4 = st.columns(2)
     mph = c3.number_input("Miles per hour of work", min_value=1.0,
                           value=driver.DEFAULT_MILES_PER_HOUR, step=1.0, key="driver_mph")
     mpo = c4.number_input("Miles per order", min_value=1.0,
                           value=driver.DEFAULT_MILES_PER_ORDER, step=1.0, key="driver_mpo")
+    st.caption("Defaults are assumptions, not measured values: 15 mi/h, 8 mi/order, reserve 15% "
+               "of tank (min 2 gal), low/high cases use mpg x 0.85 / x 1.10. Replace them with "
+               "your own numbers.")
     reserve_gal = driver.reserve_gallons(
         tank, "conservative" if reserve_label.startswith("Conservative") else "standard")
     st.caption(f"Reserve: {reserve_gal:.1f} gal (about {reserve_gal * mpg:.0f} miles at your mpg)")
@@ -299,15 +303,19 @@ with tab_driver:
     cases = [("Low", rng["low"]), ("Base", rng["base"]), ("High", rng["high"])]
     for col, (name, m) in zip(st.columns(3), cases):
         col.metric(f"{name} miles", f"{driver.round_miles(m)} mi")
-    rows = {"Miles": [], "Hours of work": [], "Orders": []}
-    for _, m in cases:
+    shown = [(n, driver.round_miles(m)) for n, m in cases]
+    rows = {"Miles": [], "Hours of work (approx., rounded down)": [],
+            "Orders (approx., rounded down)": []}
+    for _, m in shown:
         hours, orders = driver.to_hours_orders(m, mph, mpo)
-        rows["Miles"].append(driver.round_miles(m))
-        rows["Hours of work"].append(hours)
-        rows["Orders"].append(orders)
-    st.dataframe(pd.DataFrame(rows, index=[n for n, _ in cases]).T, width="stretch")
+        rows["Miles"].append(m)
+        rows["Hours of work (approx., rounded down)"].append(hours)
+        rows["Orders (approx., rounded down)"].append(orders)
+    st.dataframe(pd.DataFrame(rows, index=[n for n, _ in shown]).T, width="stretch")
+    st.caption("Miles are rounded to the nearest 5; hours and orders are computed from the "
+               "rounded miles shown.")
 
-    msg = driver.status(rng["low"], rng["base"])
+    msg = driver.status(shown[0][1], shown[1][1])
     (st.warning if "refuel soon" in msg else st.info)(msg)
     st.caption("Estimates only. Use before or between orders, never while driving.")
 
@@ -320,21 +328,25 @@ with tab_driver:
             "|---|---|---|\n"
             "| Tank level in eighths | The needle read as 0 to 8. A reading is a band, not a "
             "point: an eighth of a 12-gal tank is 1.5 gal, and reading by eye is off by up to "
-            "half an eighth (about 0.75 gal, about 22 miles at 30 mpg). | Rounding arithmetic "
-            "(sourced, our own math). Real gauge error is larger and not measured. |\n"
+            "half an eighth (about 0.75 gal, about 22 miles at 30 mpg). | Our own "
+            "arithmetic, not an external source. Real gauge error is larger and not measured. |\n"
             "| Reserve | Fuel you do not plan to use, so you are never stranded. Stored in "
             "gallons, shown in miles with your mpg. | Standard max(15%, 2 gal): "
-            "assumption (the 2 gal floor sits near where cars' low-fuel light comes on). "
+            "assumption; the 2 gal floor sits near the range where cars' low-fuel light comes "
+            "on (about 1.7 to 2.6 gal in owner's manuals, seen only through third-party "
+            "mirrors). "
             "Conservative max(25% of tank, Standard reserve): the quarter-tank idea is "
-            "sourced (AAA advice to refill below a quarter tank, fleet policies); the floor "
-            "keeps small tanks at least at the Standard reserve. |\n"
+            "commonly cited advice (AAA, fleet policies); not independently verified by us. "
+            "The floor keeps small tanks at least at the Standard reserve. |\n"
             "| Base miles | (gallons now - reserve) x mpg: how far you can go before touching "
-            "the reserve. | Formula, no assumption except your mpg. |\n"
-            "| Low case | One eighth less fuel than you read, and mpg x 0.85 (stop-and-go "
-            "uses more fuel than the label). | -1 eighth is a design choice; 0.85 is an "
-            "assumption. |\n"
-            "| High case | Half an eighth more fuel and mpg x 1.10. | Both are assumptions, "
-            "skewed low on purpose because running short costs more than running long. |\n"
+            "the reserve. | Formula. Assumes the gauge is linear (E means 0 gal) and that your tank size and mpg are right. |\n"
+            "| Low case | One eighth less fuel than you read, and mpg x 0.85 (assumed: "
+            "stop-and-go may use more fuel than the label; do not apply this on top of a city "
+            "mpg figure you already picked in the car lookup, it would double-count). | "
+            "-1 eighth is a design choice; 0.85 is an assumption. |\n"
+            "| High case | Half an eighth more fuel and mpg x 1.10. | +0.5 eighth is derived "
+            "from rounding arithmetic; 1.10 is an assumption. The range is skewed low on "
+            "purpose because running short costs more than running long. |\n"
             "| Miles per hour of work | Miles you drive per hour online, including empty miles "
             "to the restaurant. Turns miles into hours. | Default 15: assumption, no measured "
             "source and no Florida data. Better: your odometer miles / online hours. |\n"

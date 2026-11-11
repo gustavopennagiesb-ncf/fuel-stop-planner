@@ -87,3 +87,7 @@ def test_status_three_states():
     assert driver.status(0, 0) == "At or below your reserve: refuel soon"
     assert driver.status(0, 40) == "Close to your reserve"
     assert driver.status(30, 100) == "Room before reserve"
+
+
+def test_float_noise_does_not_undercount():
+    assert driver.to_hours_orders(254.99999999999997, 15, 8) == (17, 31)
