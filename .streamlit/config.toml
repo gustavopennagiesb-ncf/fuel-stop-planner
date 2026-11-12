@@ -1,11 +1,13 @@
-# App theme: a dark dashboard. Text/background pairs are checked for WCAG AA contrast by
-# tests/test_ui_style.py, so a palette change that makes text unreadable fails the tests.
+# App theme: a neutral, professional look (slate and navy). Text/background pairs are checked for
+# WCAG AA contrast by tests/test_ui_style.py, so a palette change that makes text unreadable fails
+# the tests.
 [theme]
-base = "dark"
-primaryColor = "#F5B84A"
-backgroundColor = "#0E1318"
-secondaryBackgroundColor = "#161D25"
-textColor = "#E8EEF3"
-greenColor = "#4ADE9A"
-redColor = "#FF7A85"
+base = "light"
+primaryColor = "#1E3A8A"
+backgroundColor = "#F8FAFC"
+secondaryBackgroundColor = "#EEF2F7"
+textColor = "#0F172A"
+greenColor = "#166534"
+orangeColor = "#9A4B00"
+redColor = "#B3261E"
 metricValueFontSize = "1.8rem"

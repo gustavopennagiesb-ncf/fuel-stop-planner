@@ -44,7 +44,7 @@ In `google` mode (day-1 check passed: Places returns U.S. fuel prices):
   your own key. If permission is denied, the typed address keeps working.
 
 ## Structure
-- `app.py` UI (7 tabs, including Driver mode; "Your car" at the top, trip settings in the sidebar) · `.streamlit/config.toml` dark theme · `services.py` provider switch · `config.py` env flags
+- `app.py` UI (7 tabs, including Driver mode; "Your car" at the top, trip settings in the sidebar) · `.streamlit/config.toml` light theme · `services.py` provider switch · `config.py` env flags
 - `providers/` `eia.py`, `places.py`, `routes.py`, `fixtures.py` (synthetic)
 - `gmap.py` Google Maps JS embed · `geo.py` polyline + corridor filter · `detour.py` break-even math · `forecast.py` baselines · `driver.py` driver-mode math
 - `llm.py` provider interface, number validator, template fallback

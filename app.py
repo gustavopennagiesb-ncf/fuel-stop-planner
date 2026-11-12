@@ -300,7 +300,7 @@ with tab_trip:
                             colorbar=dict(title="Net $")),
                 text=[f"{r['name']}: ${r['price']:.2f} (net ${r['net_benefit']:.2f})"
                       for r in ranked], name="Stations"))
-            fig.update_layout(map=dict(style="carto-darkmatter",
+            fig.update_layout(map=dict(style="carto-positron",
                                        center=dict(lat=path[:, 0].mean(), lon=path[:, 1].mean()),
                                        zoom=7.2), height=520, margin=dict(l=0, r=0, t=0, b=0),
                               legend=dict(orientation="h", yanchor="bottom", y=1.01, x=0))

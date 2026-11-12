@@ -30,10 +30,10 @@ def test_contrast_ratio_known_values():
     assert ui_style.contrast_ratio((255, 255, 255), (255, 255, 255)) == pytest.approx(1.0)
 
 
-def test_the_app_uses_a_dark_theme():
+def test_the_app_uses_a_light_theme():
     t = theme()
-    assert t["base"] == "dark"
-    assert ui_style.contrast_ratio(rgb("#ffffff"), rgb(t["backgroundColor"])) > 10  # really dark
+    assert t["base"] == "light"
+    assert ui_style.contrast_ratio(rgb("#ffffff"), rgb(t["backgroundColor"])) < 1.2  # really light
 
 
 @pytest.mark.parametrize("background", ["backgroundColor", "secondaryBackgroundColor"])
@@ -51,9 +51,10 @@ def test_captions_stay_above_aa_at_the_opacity_we_set(background):
 
 
 @pytest.mark.parametrize("background", ["backgroundColor", "secondaryBackgroundColor"])
-def test_the_accent_color_is_readable_as_text(background):
+def test_the_accent_colors_are_readable_as_text(background):
     t = theme()
-    assert ui_style.contrast_ratio(rgb(t["primaryColor"]), rgb(t[background])) >= 4.5
+    for name in ("primaryColor", "orangeColor", "redColor"):
+        assert ui_style.contrast_ratio(rgb(t[name]), rgb(t[background])) >= 4.5, name
 
 
 def test_caption_rule_is_injected_into_the_page(monkeypatch):

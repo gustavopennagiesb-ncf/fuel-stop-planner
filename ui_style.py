@@ -1,6 +1,6 @@
 """Small UI tweaks and the arithmetic that justifies them. No Streamlit import.
 
-The theme itself lives in .streamlit/config.toml (a dark dashboard); tests/test_ui_style.py reads
+The theme itself lives in .streamlit/config.toml (a neutral slate-and-navy look); tests/test_ui_style.py reads
 its colors and checks WCAG AA contrast with contrast_ratio(). Streamlit draws captions at opacity
 0.6; CAPTION_OPACITY raises it a little so secondary text stays clearly readable.
 """
