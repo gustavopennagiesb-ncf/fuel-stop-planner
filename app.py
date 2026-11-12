@@ -16,6 +16,7 @@ load_dotenv()  # before `import config`, which reads the environment at import t
 
 import config  # noqa: E402
 import driver
+import location
 import ui_style
 from detour import (DEFAULTS, breakeven_miles, rank_stations, reference_price,
                     sensitivity_table)
@@ -142,8 +143,33 @@ with st.sidebar:
              "each side searches a 6 km wide strip along the route.")
     origin = destination = None
     if provider == "google" and config.GOOGLE_API_KEY:
-        origin = st.text_input("Origin", "Sarasota, FL")
+        mine = st.session_state.get("my_location")
+        typed = None
+        if mine:
+            acc = st.session_state.get("my_location_accuracy")
+            st.caption(f"Using your current location ({mine[0]:.4f}, {mine[1]:.4f})"
+                       + (f", accuracy about {acc} m" if acc else "")
+                       + ". It is used only for this route and is not saved.")
+            if st.button("Use the typed address instead"):
+                st.session_state["my_location"] = None
+                st.rerun()
+        else:
+            typed = st.text_input("Origin", "Sarasota, FL")
+            fix = location.parse_fix(location.request_location("geo_button"))
+            if fix and "coords" in fix:
+                st.session_state["my_location"] = fix["coords"]
+                st.session_state["my_location_accuracy"] = fix["accuracy"]
+                st.session_state["my_location_error"] = None
+                st.rerun()
+            elif fix:
+                st.session_state["my_location_error"] = fix["error"]
+            if st.session_state.get("my_location_error"):
+                st.warning(st.session_state["my_location_error"])
+        origin = location.resolve_origin(mine, typed)
         destination = st.text_input("Destination", "Orlando, FL")
+    else:
+        st.caption("Using your current location as the origin needs PROVIDER=google (live route "
+                   "data). The synthetic test mode always uses the same fixed route.")
 
 
 @st.cache_data(show_spinner="Loading prices...", ttl=3600)

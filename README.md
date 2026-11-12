@@ -38,6 +38,10 @@ In `google` mode (day-1 check passed: Places returns U.S. fuel prices):
 - Stations are drawn on a Google map when `GOOGLE_MAPS_JS_KEY` is set (required by Google's terms);
   without it only the table is shown. Missing `GOOGLE_API_KEY` falls back to fixture data with a
   warning, and any load error falls back to fixtures instead of crashing.
+- "Use my current location" (under Origin, google mode only) asks the browser for your position
+  and uses it as the route origin. The position stays in the session, is rounded to about 10 m,
+  is never written to a file or a log, and only reaches Google in the Routes request made with
+  your own key. If permission is denied, the typed address keeps working.
 
 ## Structure
 - `app.py` UI (7 tabs, including Driver mode) · `services.py` provider switch · `config.py` env flags
