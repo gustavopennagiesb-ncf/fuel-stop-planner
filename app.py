@@ -28,16 +28,17 @@ from services import compute_detours, load_series, load_trip
 
 FE_RETRY_S = 60  # seconds before the car lookup is tried again after fueleconomy.gov failed
 
-st.set_page_config(page_title="Fuel Stop Planner", layout="wide")
-st.markdown(ui_style.CAPTION_CSS, unsafe_allow_html=True)  # captions: 3.8:1 -> above 4.5:1
-st.title("⛽ Fuel Stop Planner")
+st.set_page_config(page_title="Fuel Stop Planner", page_icon="⛽", layout="wide")
+st.markdown(ui_style.CAPTION_CSS, unsafe_allow_html=True)  # captions: higher contrast
+st.header("Fuel Stop Planner")
 st.caption("When to fill up (EIA weekly prices) and where (stations along your route, with "
            "detour break-even). Not financial advice: historical data and simple arithmetic.")
 
 provider = config.PROVIDER
 if provider == "fixture" or not (config.GOOGLE_API_KEY and config.EIA_API_KEY):
-    st.warning("FIXTURE MODE: all prices, stations and the route are SYNTHETIC test data, "
-               "not real. Set PROVIDER=google plus EIA_API_KEY and GOOGLE_API_KEY for live data.")
+    st.markdown(":orange-badge[:material/science: Synthetic test data] Prices, stations and the "
+                "route are made up. Set PROVIDER=google plus EIA_API_KEY and GOOGLE_API_KEY for "
+                "live data.")
 
 @st.cache_data(show_spinner=False, ttl=86400)
 def fe_menu(kind, *args):
@@ -87,14 +88,11 @@ def slider_with_number(label, lo, hi, default, step, key, help=None):
 
 
 st.session_state.setdefault("mpg", DEFAULTS["mpg"])
-with st.sidebar:
-    st.header("Your car and time")
-    st.caption("Drag a slider or type the exact value in the box beside it.")
-    gallons = slider_with_number(
-        "Gallons to buy", 3.0, 25.0, DEFAULTS["gallons"], 0.5, "gallons",
-        help="How much fuel you plan to put in at the stop. Bigger fills make a price gap worth "
-             "more. For example, a 10 cent/gal gap on 12 gallons saves $1.20 before the detour "
-             "costs.")
+
+# "Your car" sits in the main area, not the sidebar, so it is visible on a phone (where the
+# sidebar starts collapsed) and every tab reads the same mpg and tank.
+with st.container(border=True):
+    st.markdown("**Your car**")
     with st.expander("Look up my car (fueleconomy.gov)"):
         car = None
         if time.time() < st.session_state.get("fe_down_until", 0.0):
@@ -125,10 +123,21 @@ with st.sidebar:
                 st.session_state["mpg_applied"] = (car["id"], kind)
             st.caption(f"{car['label']}: city {car['city']}, combined {car['combined']}, "
                        f"highway {car['highway']} mpg (EPA label values; real mileage varies).")
-    mpg = slider_with_number("Fuel economy (mpg)", 10.0, 60.0, DEFAULTS["mpg"], 0.5, "mpg")
-    tank = st.number_input("Tank size (gallons)", 5.0, 40.0, 13.0, 0.5,
-                           key="tank")
+    c_mpg, c_tank = st.columns([3, 2], vertical_alignment="bottom")
+    with c_mpg:
+        mpg = slider_with_number("Fuel economy (mpg)", 10.0, 60.0, DEFAULTS["mpg"], 0.5, "mpg")
+    with c_tank:
+        tank = st.number_input("Tank size (gallons)", 5.0, 40.0, 13.0, 0.5, key="tank")
     st.caption(f"About {tank * mpg:.0f} miles on a full tank at this mpg.")
+
+with st.sidebar:
+    st.header("Trip and time")
+    st.caption("Drag a slider or type the exact value in the box beside it.")
+    gallons = slider_with_number(
+        "Gallons to buy", 3.0, 25.0, DEFAULTS["gallons"], 0.5, "gallons",
+        help="How much fuel you plan to put in at the stop. Bigger fills make a price gap worth "
+             "more. For example, a 10 cent/gal gap on 12 gallons saves $1.20 before the detour "
+             "costs.")
     vot = slider_with_number(
         "Value of your time ($/h)", 0.0, 60.0, DEFAULTS["value_of_time"], 1.0, "vot",
         help="What an hour of your time is worth to you; the app charges detour minutes at this "
@@ -200,9 +209,9 @@ tab_help, tab_trip, tab_when, tab_eda, tab_sens, tab_driver, tab_ai = st.tabs(
 with tab_help:
     st.subheader("How to use this app")
     st.markdown(
-        "**Start in the sidebar:** pick your car (or set the mpg), your tank size and how much "
-        "your time is worth. Hover the small (?) next to a control for a tip. Every tab reads "
-        "those values.\n\n"
+        "**Start with \"Your car\" at the top:** pick your car (or set the mpg) and your tank "
+        "size. The sidebar holds the trip and time settings. Hover the small (?) next to a "
+        "control for a tip. Every tab reads those values.\n\n"
         "**Which tab should I open?**\n"
         "- *I am on a trip and want the best station on the way* → **Where to stop**. Edit any "
         "price in the table (typed prices always work). The app ranks stations by net benefit: "
@@ -291,9 +300,12 @@ with tab_trip:
                             colorbar=dict(title="Net $")),
                 text=[f"{r['name']}: ${r['price']:.2f} (net ${r['net_benefit']:.2f})"
                       for r in ranked], name="Stations"))
-            fig.update_layout(map=dict(style="open-street-map",
+            fig.update_layout(map=dict(style="carto-darkmatter",
                                        center=dict(lat=path[:, 0].mean(), lon=path[:, 1].mean()),
-                                       zoom=7.2), height=520, margin=dict(l=0, r=0, t=0, b=0))
+                                       zoom=7.2), height=520, margin=dict(l=0, r=0, t=0, b=0),
+                              legend=dict(orientation="h", yanchor="bottom", y=1.01, x=0))
+            st.caption("Synthetic route and stations, not real roads: the route is a straight "
+                       "line between four cities and the stations are random points near it.")
             st.plotly_chart(fig, width="stretch")
         elif config.GOOGLE_MAPS_JS_KEY:
             components.html(build_map_html(config.GOOGLE_MAPS_JS_KEY, trip["path"], ranked),
@@ -408,7 +420,13 @@ with tab_driver:
                              options=list(range(0, 9)), value=4, key="driver_level")
     reserve_label = c2.radio("Reserve", ["Standard", "Conservative (1/4 tank)"],
                              key="driver_reserve_mode", horizontal=True)
-    st.caption(f"Using tank {tank} gal and {mpg} mpg from the sidebar: check both.")
+    st.caption(f"Using tank {tank} gal and {mpg} mpg from Your car above: check both.")
+    reserve_gal = driver.reserve_gallons(
+        tank, "conservative" if reserve_label.startswith("Conservative") else "standard")
+    st.caption(f"Reserve: {reserve_gal:.1f} gal (about {reserve_gal * mpg:.0f} miles at your mpg)")
+
+    results = st.container()  # drawn here, right under the tank level, filled once the pace is known
+    st.markdown("**Your pace**")
     c3, c4 = st.columns(2)
     mph = c3.number_input("Miles per hour of work", min_value=1.0,
                           value=driver.DEFAULT_MILES_PER_HOUR, step=1.0, key="driver_mph")
@@ -417,29 +435,27 @@ with tab_driver:
     st.caption("Defaults are assumptions, not measured values: 15 mi/h, 8 mi/order, reserve 15% "
                "of tank (min 2 gal), low/high cases use mpg x 0.85 / x 1.10. Replace them with "
                "your own numbers.")
-    reserve_gal = driver.reserve_gallons(
-        tank, "conservative" if reserve_label.startswith("Conservative") else "standard")
-    st.caption(f"Reserve: {reserve_gal:.1f} gal (about {reserve_gal * mpg:.0f} miles at your mpg)")
 
     rng = driver.miles_until_reserve(level, tank, mpg, reserve_gal)
     cases = [("Low", rng["low"]), ("Base", rng["base"]), ("High", rng["high"])]
-    for col, (name, m) in zip(st.columns(3), cases):
-        col.metric(f"{name} miles", f"{driver.round_miles(m)} mi")
     shown = [(n, driver.round_miles(m)) for n, m in cases]
-    rows = {"Miles": [], "Hours of work (approx., rounded down)": [],
-            "Orders (approx., rounded down)": []}
+    rows = {"Miles": [], "Hours (approx.)": [],
+            "Orders (approx.)": []}
     for _, m in shown:
         hours, orders = driver.to_hours_orders(m, mph, mpo)
         rows["Miles"].append(m)
-        rows["Hours of work (approx., rounded down)"].append(hours)
-        rows["Orders (approx., rounded down)"].append(orders)
-    st.dataframe(pd.DataFrame(rows, index=[n for n, _ in shown]).T, width="stretch")
-    st.caption("Miles are rounded to the nearest 5; hours and orders are computed from the "
-               "rounded miles shown.")
-
-    msg = driver.status(shown[0][1], shown[1][1])
-    (st.warning if "refuel soon" in msg else st.info)(msg)
-    st.caption("Estimates only. Use before or between orders, never while driving.")
+        rows["Hours (approx.)"].append(hours)
+        rows["Orders (approx.)"].append(orders)
+    with results:
+        with st.container(horizontal=True):  # one row even on a phone
+            for name, m in cases:
+                st.metric(f"{name} miles", f"{driver.round_miles(m)} mi")
+        msg = driver.status(shown[0][1], shown[1][1])
+        (st.warning if "refuel soon" in msg else st.info)(msg)
+        st.dataframe(pd.DataFrame(rows, index=[n for n, _ in shown]).T, width="stretch")
+        st.caption("Miles are rounded to the nearest 5; hours and orders are approximate, "
+                   "rounded down, and computed from the rounded miles shown. Estimates only: "
+                   "use before or between orders, never while driving.")
 
     with st.expander("How this is calculated"):
         st.markdown(

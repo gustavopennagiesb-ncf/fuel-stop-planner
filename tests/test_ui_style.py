@@ -1,5 +1,7 @@
-"""Caption text must reach the 4.5:1 contrast that WCAG AA asks for (checked here for the
-default light theme; a higher opacity also raises contrast in the dark theme)."""
+"""The theme (.streamlit/config.toml) must keep text readable: WCAG AA asks 4.5:1 for normal text.
+Ratios are computed from the colors actually written in the config, so editing the palette to
+something unreadable fails here."""
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -9,7 +11,18 @@ from streamlit.testing.v1 import AppTest
 import ui_style
 from providers import fueleconomy
 
-APP = Path(__file__).resolve().parent.parent / "app.py"
+ROOT = Path(__file__).resolve().parent.parent
+APP = ROOT / "app.py"
+CONFIG = ROOT / ".streamlit" / "config.toml"
+
+
+def theme():
+    return tomllib.loads(CONFIG.read_text())["theme"]
+
+
+def rgb(hex_color):
+    h = hex_color.lstrip("#")
+    return tuple(int(h[i:i + 2], 16) for i in (0, 2, 4))
 
 
 def test_contrast_ratio_known_values():
@@ -17,12 +30,30 @@ def test_contrast_ratio_known_values():
     assert ui_style.contrast_ratio((255, 255, 255), (255, 255, 255)) == pytest.approx(1.0)
 
 
-def test_streamlits_default_caption_opacity_is_below_aa_and_ours_is_above():
-    for bg in (ui_style.LIGHT_BG_MAIN, ui_style.LIGHT_BG_SIDEBAR):
-        default = ui_style.contrast_ratio(ui_style.LIGHT_TEXT, bg, opacity=0.6)
-        ours = ui_style.contrast_ratio(ui_style.LIGHT_TEXT, bg, opacity=ui_style.CAPTION_OPACITY)
-        assert default < 4.5
-        assert ours >= 4.5
+def test_the_app_uses_a_dark_theme():
+    t = theme()
+    assert t["base"] == "dark"
+    assert ui_style.contrast_ratio(rgb("#ffffff"), rgb(t["backgroundColor"])) > 10  # really dark
+
+
+@pytest.mark.parametrize("background", ["backgroundColor", "secondaryBackgroundColor"])
+def test_body_text_is_readable_on_both_backgrounds(background):
+    t = theme()
+    assert ui_style.contrast_ratio(rgb(t["textColor"]), rgb(t[background])) >= 7.0
+
+
+@pytest.mark.parametrize("background", ["backgroundColor", "secondaryBackgroundColor"])
+def test_captions_stay_above_aa_at_the_opacity_we_set(background):
+    t = theme()
+    got = ui_style.contrast_ratio(rgb(t["textColor"]), rgb(t[background]),
+                                  opacity=ui_style.CAPTION_OPACITY)
+    assert got >= 4.5
+
+
+@pytest.mark.parametrize("background", ["backgroundColor", "secondaryBackgroundColor"])
+def test_the_accent_color_is_readable_as_text(background):
+    t = theme()
+    assert ui_style.contrast_ratio(rgb(t["primaryColor"]), rgb(t[background])) >= 4.5
 
 
 def test_caption_rule_is_injected_into_the_page(monkeypatch):

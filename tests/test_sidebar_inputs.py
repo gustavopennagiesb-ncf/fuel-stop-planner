@@ -1,4 +1,4 @@
-"""Sidebar sliders also accept an exact typed number; the slider and the number box stay in sync."""
+"""The sliders (sidebar, and mpg under Your car) also accept an exact typed number; the slider and the number box stay in sync."""
 from pathlib import Path
 
 import pytest
@@ -27,7 +27,7 @@ def at(monkeypatch):
 
 @pytest.mark.parametrize("key,lo,hi", CONTROLS)
 def test_every_control_has_slider_and_number_box_with_the_same_start_value(at, key, lo, hi):
-    slider, box = at.sidebar.slider(key=key), at.sidebar.number_input(key=f"{key}_num")
+    slider, box = at.slider(key=key), at.number_input(key=f"{key}_num")
     assert slider.value == box.value
     assert lo <= box.value <= hi
 
@@ -35,17 +35,17 @@ def test_every_control_has_slider_and_number_box_with_the_same_start_value(at, k
 @pytest.mark.parametrize("key,lo,hi", CONTROLS)
 def test_typing_a_number_moves_the_slider(at, key, lo, hi):
     target = lo + 2 * 0.5 if lo + 1 < hi else lo
-    at.sidebar.number_input(key=f"{key}_num").set_value(target).run()
-    assert at.sidebar.slider(key=key).value == target
-    assert at.sidebar.number_input(key=f"{key}_num").value == target
+    at.number_input(key=f"{key}_num").set_value(target).run()
+    assert at.slider(key=key).value == target
+    assert at.number_input(key=f"{key}_num").value == target
     assert not at.exception
 
 
 @pytest.mark.parametrize("key,lo,hi", CONTROLS)
 def test_dragging_the_slider_updates_the_number_box(at, key, lo, hi):
     target = hi - 1.0
-    at.sidebar.slider(key=key).set_value(target).run()
-    assert at.sidebar.number_input(key=f"{key}_num").value == target
+    at.slider(key=key).set_value(target).run()
+    assert at.number_input(key=f"{key}_num").value == target
 
 
 @pytest.mark.parametrize("key,lo,hi", CONTROLS)
@@ -54,8 +54,8 @@ def test_out_of_range_typed_values_never_break_the_sidebar(at, key, lo, hi):
     # out-of-range value and falls back to the minimum. Either way both controls must stay
     # inside the range, equal to each other, and the app must not raise.
     for typed in (hi + 100, lo - 100):
-        at.sidebar.number_input(key=f"{key}_num").set_value(typed).run()
-        slider, box = at.sidebar.slider(key=key), at.sidebar.number_input(key=f"{key}_num")
+        at.number_input(key=f"{key}_num").set_value(typed).run()
+        slider, box = at.slider(key=key), at.number_input(key=f"{key}_num")
         assert lo <= slider.value <= hi
         assert slider.value == box.value
         assert not at.exception
@@ -64,6 +64,6 @@ def test_out_of_range_typed_values_never_break_the_sidebar(at, key, lo, hi):
 def test_mpg_set_by_the_car_lookup_shows_in_both_controls(at):
     at.session_state["mpg"] = 33.0
     at.run()
-    assert at.sidebar.slider(key="mpg").value == 33.0
-    assert at.sidebar.number_input(key="mpg_num").value == 33.0
+    assert at.slider(key="mpg").value == 33.0
+    assert at.number_input(key="mpg_num").value == 33.0
     assert not at.exception

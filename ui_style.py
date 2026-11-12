@@ -1,14 +1,9 @@
 """Small UI tweaks and the arithmetic that justifies them. No Streamlit import.
 
-Streamlit draws captions at opacity 0.6, which on its default light theme measures about 3.8:1
-against the sidebar and main backgrounds (below the 4.5:1 that WCAG AA asks for normal text).
-CAPTION_OPACITY raises it. The colors below are the default light theme's, measured in the
-browser; they are used only to check the ratio here.
+The theme itself lives in .streamlit/config.toml (a dark dashboard); tests/test_ui_style.py reads
+its colors and checks WCAG AA contrast with contrast_ratio(). Streamlit draws captions at opacity
+0.6; CAPTION_OPACITY raises it a little so secondary text stays clearly readable.
 """
-
-LIGHT_TEXT = (47, 45, 43)
-LIGHT_BG_MAIN = (255, 255, 255)
-LIGHT_BG_SIDEBAR = (248, 248, 247)
 
 CAPTION_OPACITY = 0.75
 CAPTION_CSS = ("<style>[data-testid=\"stCaptionContainer\"] "

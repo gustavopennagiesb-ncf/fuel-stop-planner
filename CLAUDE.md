@@ -34,3 +34,5 @@ Streamlit app (`app.py`, 7 tabs, including Driver mode) over a thin service laye
 - Places with `fuelOptions` and Routes `TRAFFIC_AWARE` are paid SKUs; keep call counts capped in `config.py`.
 - Keys come only from env vars / `st.secrets`; `.env` is gitignored.
 - The user's location (`location.py`, an `st.components.v2` button around `navigator.geolocation`) is sensitive: keep it in session state only, never log or store it, never render free text sent by the browser (errors arrive as numeric codes mapped to fixed messages), and in tests replace `location.request_location` instead of using a real browser.
+
+- Look: the dark theme lives in `.streamlit/config.toml` (no CSS except one caption-opacity rule in `ui_style.py`); `tests/test_ui_style.py` reads those colors and enforces WCAG AA contrast, so change the palette there. mpg and tank are under "Your car" in the main area (visible on a phone); the sidebar holds gallons, value of time, speed, corridor and route.

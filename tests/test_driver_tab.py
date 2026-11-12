@@ -73,7 +73,7 @@ def test_assumptions_visible_without_expander(at):
     text = _all_text(at)
     assert "Defaults are assumptions, not measured values" in text
     assert "mpg x 0.85 / x 1.10" in text
-    assert "Using tank 13.0 gal and" in text and "mpg from the sidebar: check both." in text
+    assert "Using tank 13.0 gal and" in text and "mpg from Your car above: check both." in text
     assert "rounded to the nearest 5" in text
 
 
@@ -90,8 +90,8 @@ def test_table_uses_displayed_rounded_miles(at):
     df = next(d.value for d in at.dataframe if "Miles" in d.value.index)
     for col in df.columns:
         miles = df.loc["Miles", col]
-        assert df.loc["Hours of work (approx., rounded down)", col] == int(miles // 15)
-        assert df.loc["Orders (approx., rounded down)", col] == int(miles // 8)
+        assert df.loc["Hours (approx.)", col] == int(miles // 15)
+        assert df.loc["Orders (approx.)", col] == int(miles // 8)
 
 
 def test_rounded_zero_miles_shows_refuel_warning(at):

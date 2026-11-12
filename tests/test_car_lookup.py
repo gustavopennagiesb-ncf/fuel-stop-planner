@@ -39,15 +39,19 @@ def make_app(monkeypatch, getter):
 
 
 def pick_car(app):
-    app.sidebar.selectbox(key="car_year").set_value("2024").run()
-    app.sidebar.selectbox(key="car_make").set_value("Toyota").run()
-    app.sidebar.selectbox(key="car_model").set_value("Camry").run()
-    app.sidebar.selectbox(key="car_version").set_value("Auto, 6 cyl").run()
+    app.selectbox(key="car_year").set_value("2024").run()
+    app.selectbox(key="car_make").set_value("Toyota").run()
+    app.selectbox(key="car_model").set_value("Camry").run()
+    app.selectbox(key="car_version").set_value("Auto, 6 cyl").run()
     return app
 
 
+def epa_kind(app):
+    return next(r for r in app.radio if r.label == "Which EPA figure")
+
+
 def mpg(app):
-    return app.sidebar.slider(key="mpg").value, app.sidebar.number_input(key="mpg_num").value
+    return app.slider(key="mpg").value, app.number_input(key="mpg_num").value
 
 
 def test_picking_a_car_applies_combined_mpg_to_both_controls(monkeypatch):
@@ -58,23 +62,23 @@ def test_picking_a_car_applies_combined_mpg_to_both_controls(monkeypatch):
 
 def test_a_hand_edit_survives_later_reruns(monkeypatch):
     app = pick_car(make_app(monkeypatch, fake_get_for(CAR)))
-    app.sidebar.number_input(key="mpg_num").set_value(31.0).run()
+    app.number_input(key="mpg_num").set_value(31.0).run()
     app.sidebar.slider(key="gallons").set_value(12.0).run()
     assert mpg(app) == (31.0, 31.0)
 
 
 def test_switching_the_figure_kind_applies_that_figure(monkeypatch):
     app = pick_car(make_app(monkeypatch, fake_get_for(CAR)))
-    app.sidebar.radio[0].set_value("city").run()
+    epa_kind(app).set_value("city").run()
     assert mpg(app) == (22.0, 22.0)
-    app.sidebar.radio[0].set_value("highway").run()
+    epa_kind(app).set_value("highway").run()
     assert mpg(app) == (33.0, 33.0)
 
 
 def test_plug_in_hybrid_shows_a_warning(monkeypatch):
     phev = {**CAR, "fuelType": "Premium Gas or Electricity"}
     app = pick_car(make_app(monkeypatch, fake_get_for(phev)))
-    assert any("Plug-in hybrid" in w.value for w in app.sidebar.warning)
+    assert any("Plug-in hybrid" in w.value for w in app.warning)
 
 
 def test_outage_does_not_crash_and_is_not_retried_on_every_rerun(monkeypatch):
@@ -87,7 +91,7 @@ def test_outage_does_not_crash_and_is_not_retried_on_every_rerun(monkeypatch):
     app = make_app(monkeypatch, down)
     first = len(calls)
     assert first >= 1 and not app.exception
-    assert any("not reachable" in c.value for c in app.sidebar.caption)
+    assert any("not reachable" in c.value for c in app.caption)
     app.sidebar.slider(key="gallons").set_value(12.0).run()
     app.sidebar.slider(key="gallons").set_value(14.0).run()
     assert len(calls) == first, "the outage was retried on a rerun"
@@ -97,4 +101,4 @@ def test_outage_does_not_crash_and_is_not_retried_on_every_rerun(monkeypatch):
 def test_malformed_response_does_not_crash_the_sidebar(monkeypatch):
     app = make_app(monkeypatch, lambda path, params=None, session=None: ["unexpected"])
     assert not app.exception
-    assert any("not reachable" in c.value for c in app.sidebar.caption)
+    assert any("not reachable" in c.value for c in app.caption)
