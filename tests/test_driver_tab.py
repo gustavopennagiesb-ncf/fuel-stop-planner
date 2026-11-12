@@ -43,7 +43,7 @@ def test_lower_level_never_raises_base_miles(at):
 def test_reserve_mode_conservative_not_more_miles(at):
     at.select_slider(key="driver_level").set_value(8).run()
     standard = _miles(at)
-    at.radio(key="driver_reserve_mode").set_value("Conservative (1/4 tank)").run()
+    at.button_group(key="driver_reserve_mode").set_value("Conservative (1/4 tank)").run()
     assert not at.exception
     assert _miles(at) <= standard
 

@@ -2,12 +2,10 @@
 
 The theme itself lives in .streamlit/config.toml (a neutral slate-and-navy look); tests/test_ui_style.py reads
 its colors and checks WCAG AA contrast with contrast_ratio(). Streamlit draws captions at opacity
-0.6; CAPTION_OPACITY raises it a little so secondary text stays clearly readable.
+0.6 (STREAMLIT_CAPTION_OPACITY), so the text color is chosen dark enough for captions to pass.
 """
 
-CAPTION_OPACITY = 0.75
-CAPTION_CSS = ("<style>[data-testid=\"stCaptionContainer\"] "
-               f"{{ opacity: {CAPTION_OPACITY} !important; }}</style>")
+STREAMLIT_CAPTION_OPACITY = 0.6  # how Streamlit draws captions by default
 
 
 def _luminance(rgb):

@@ -47,7 +47,7 @@ def pick_car(app):
 
 
 def epa_kind(app):
-    return next(r for r in app.radio if r.label == "Which EPA figure")
+    return app.button_group(key="epa_kind")
 
 
 def mpg(app):

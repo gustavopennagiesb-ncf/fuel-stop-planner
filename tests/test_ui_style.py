@@ -43,11 +43,11 @@ def test_body_text_is_readable_on_both_backgrounds(background):
 
 
 @pytest.mark.parametrize("background", ["backgroundColor", "secondaryBackgroundColor"])
-def test_captions_stay_above_aa_at_the_opacity_we_set(background):
+def test_captions_pass_aa_at_streamlits_default_opacity(background):
     t = theme()
     got = ui_style.contrast_ratio(rgb(t["textColor"]), rgb(t[background]),
-                                  opacity=ui_style.CAPTION_OPACITY)
-    assert got >= 4.5
+                                  opacity=ui_style.STREAMLIT_CAPTION_OPACITY)
+    assert got >= 5.0  # a margin over the 4.5 minimum
 
 
 @pytest.mark.parametrize("background", ["backgroundColor", "secondaryBackgroundColor"])
@@ -57,13 +57,13 @@ def test_the_accent_colors_are_readable_as_text(background):
         assert ui_style.contrast_ratio(rgb(t[name]), rgb(t[background])) >= 4.5, name
 
 
-def test_caption_rule_is_injected_into_the_page(monkeypatch):
+def test_the_page_injects_no_css(monkeypatch):
+    """The look comes from config.toml alone (the Streamlit skill's rule: no CSS unless asked)."""
     def offline(*args, **kwargs):
         raise requests.ConnectionError("offline")
 
     monkeypatch.setattr(fueleconomy, "_get", offline)
     at = AppTest.from_file(str(APP), default_timeout=30)
     at.run()
-    css = " ".join(m.value for m in at.markdown)
-    assert "stCaptionContainer" in css and str(ui_style.CAPTION_OPACITY) in css
+    assert not any("<style" in m.value for m in at.markdown)
     assert not at.exception
