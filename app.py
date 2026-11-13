@@ -90,9 +90,35 @@ def slider_with_number(label, lo, hi, default, step, key, help=None):
 
 st.session_state.setdefault("mpg", DEFAULTS["mpg"])
 
-# "Your car" sits in the main area, not the sidebar, so it is visible on a phone (where the
-# sidebar starts collapsed) and every tab reads the same mpg and tank.
-with st.container(border=True):
+# "Your trip": where from and to, and how wide to search. What is typed, picked or located is only
+# "pending": a paid search starts when "Find stations" is pressed, never on a keystroke or a pick.
+def address_input(name, label, default_text):
+    """An address box with Google's suggestions when the browser key is set (and they work), else a
+    plain text box. Returns the pending place, or None if the text box is empty."""
+    key = f"trip_{name}"
+    if config.GOOGLE_MAPS_JS_KEY and not st.session_state.get("suggestions_off"):
+        st.markdown(label)
+        parsed = places_autocomplete.parse_pick(places_autocomplete.request_pick(
+            f"{key}_ac", config.GOOGLE_MAPS_JS_KEY, "Type an address"))
+        if parsed and "coords" in parsed:
+            st.session_state[f"{key}_pick"] = ti.pick_place(parsed)
+        elif parsed:  # unavailable here (e.g. the key lacks the Places API): use plain text boxes
+            st.session_state["suggestions_off"] = True
+            st.session_state["suggestions_error"] = parsed["error"]
+            st.rerun()
+        picked = st.session_state.get(f"{key}_pick")
+        st.caption(f"Selected: {recommend.md_escape(picked['label'])}" if picked
+                   else f"Selected: {default_text} (type above and pick a suggestion to change)")
+        return picked or ti.text_place(default_text)
+    return ti.text_place(st.text_input(label, default_text, key=f"{key}_text"))
+
+
+# "Your car" and "Your trip" share one row, so the tabs and the answer start near the top
+# of the page; on a phone the columns stack. Both stay on the page rather than in the
+# sidebar, which is collapsed on a phone, because every tab reads the mpg, tank and route.
+origin = destination = None
+col_car, col_trip = st.columns(2, vertical_alignment="top")
+with col_car, st.container(border=True, height="stretch"):
     st.markdown("**Your car**")
     with st.expander("Look up my car (fueleconomy.gov)"):
         car = None
@@ -125,38 +151,12 @@ with st.container(border=True):
                 st.session_state["mpg_applied"] = (car["id"], kind)
             st.caption(f"{car['label']}: city {car['city']}, combined {car['combined']}, "
                        f"highway {car['highway']} mpg (EPA label values; real mileage varies).")
-    c_mpg, c_tank = st.columns([3, 2], vertical_alignment="bottom")
-    with c_mpg:
-        mpg = slider_with_number("Fuel economy (mpg)", 10.0, 60.0, DEFAULTS["mpg"], 0.5, "mpg")
-    with c_tank:
-        tank = st.number_input("Tank size (gallons)", 5.0, 40.0, 13.0, 0.5, key="tank")
+    # Stacked, not side by side: the card is half the page wide, and slider_with_number already
+    # splits its own row into a slider and a box.
+    mpg = slider_with_number("Fuel economy (mpg)", 10.0, 60.0, DEFAULTS["mpg"], 0.5, "mpg")
+    tank = st.number_input("Tank size (gallons)", 5.0, 40.0, 13.0, 0.5, key="tank")
     st.caption(f"About {tank * mpg:.0f} miles on a full tank at this mpg.")
-
-# "Your trip": where from and to, and how wide to search. What is typed, picked or located is only
-# "pending": a paid search starts when "Find stations" is pressed, never on a keystroke or a pick.
-def address_input(name, label, default_text):
-    """An address box with Google's suggestions when the browser key is set (and they work), else a
-    plain text box. Returns the pending place, or None if the text box is empty."""
-    key = f"trip_{name}"
-    if config.GOOGLE_MAPS_JS_KEY and not st.session_state.get("suggestions_off"):
-        st.markdown(label)
-        parsed = places_autocomplete.parse_pick(places_autocomplete.request_pick(
-            f"{key}_ac", config.GOOGLE_MAPS_JS_KEY, "Type an address"))
-        if parsed and "coords" in parsed:
-            st.session_state[f"{key}_pick"] = ti.pick_place(parsed)
-        elif parsed:  # unavailable here (e.g. the key lacks the Places API): use plain text boxes
-            st.session_state["suggestions_off"] = True
-            st.session_state["suggestions_error"] = parsed["error"]
-            st.rerun()
-        picked = st.session_state.get(f"{key}_pick")
-        st.caption(f"Selected: {recommend.md_escape(picked['label'])}" if picked
-                   else f"Selected: {default_text} (type above and pick a suggestion to change)")
-        return picked or ti.text_place(default_text)
-    return ti.text_place(st.text_input(label, default_text, key=f"{key}_text"))
-
-
-origin = destination = None
-with st.container(border=True):
+with col_trip, st.container(border=True, height="stretch"):
     st.markdown("**Your trip**")
     corridor_help = ("How far from your route a station can be and still be listed. For example, "
                      "3 km each side searches a 6 km wide strip along the route.")
@@ -248,9 +248,14 @@ except Exception as e:  # network or key problems should not crash the demo
 for w in trip["warnings"]:
     st.info(w)
 
-tab_help, tab_trip, tab_when, tab_eda, tab_sens, tab_driver, tab_ai = st.tabs(
-    ["How to use", "Where to stop", "When to fill up", "EDA", "Sensitivity", "Driver mode",
-     "AI"], on_change="rerun")
+# The order is what the user wants first; the manual goes last so the app opens on an answer.
+# The `with` blocks below stay in source order, so "Where to stop" still computes p_ref, priced
+# and ranked before the tabs that read them.
+tab_trip, tab_driver, tab_when, tab_sens, tab_eda, tab_ai, tab_help = st.tabs(
+    [":material/local_gas_station: Where to stop", ":material/delivery_dining: Driver mode",
+     ":material/calendar_month: When to fill up", ":material/calculate: Sensitivity",
+     ":material/analytics: EDA", ":material/smart_toy: AI",
+     ":material/help: How to use"], on_change="rerun")
 
 
 def is_open(tab):

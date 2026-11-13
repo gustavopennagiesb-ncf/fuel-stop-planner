@@ -74,3 +74,14 @@ def test_the_sidebar_header_names_what_the_sidebar_holds(at):
     assert at.sidebar.header[0].value == "Fill-up and time"
     assert {s.label for s in at.sidebar.slider} == {
         "Gallons to buy", "Value of your time ($/h)", "Average speed on detours (mph)"}
+
+
+def test_the_app_opens_on_the_answer_and_keeps_the_manual_last(at):
+    labels = [t.label for t in at.tabs]
+    assert labels[0].endswith("Where to stop")
+    assert labels[1].endswith("Driver mode")
+    assert labels[-1].endswith("How to use")
+
+
+def test_every_tab_label_carries_an_icon_so_seven_tabs_stay_scannable(at):
+    assert all(t.label.startswith(":material/") for t in at.tabs)
