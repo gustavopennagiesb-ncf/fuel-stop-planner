@@ -11,7 +11,7 @@ APP = Path(__file__).resolve().parent.parent / "app.py"
 
 # key, slider minimum, slider maximum
 CONTROLS = [("gallons", 3.0, 25.0), ("mpg", 10.0, 60.0), ("vot", 0.0, 60.0),
-            ("speed", 20.0, 70.0), ("buffer_km", 1.0, 10.0)]
+            ("speed", 20.0, 70.0)]
 
 
 @pytest.fixture

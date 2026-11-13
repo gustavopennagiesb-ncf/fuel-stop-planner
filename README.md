@@ -38,6 +38,10 @@ In `google` mode (day-1 check passed: Places returns U.S. fuel prices):
 - Stations are drawn on a Google map when `GOOGLE_MAPS_JS_KEY` is set (required by Google's terms);
   without it only the table is shown. Missing `GOOGLE_API_KEY` falls back to fixture data with a
   warning, and any load error falls back to fixtures instead of crashing.
+- Where to stop answers first ("Fill up at ...", or "No detour pays off enough"), with buttons that
+  open the station and a "navigate via this station" route in Google Maps (free links, no key).
+  Origin, destination and corridor width are under "Your trip"; a paid search starts when you press
+  "Find stations".
 - "Use my current location" (under Origin, google mode only) asks the browser for your position
   and uses it as the route origin. The position stays in the session, is rounded to about 10 m,
   is never written to a file or a log, and only reaches Google in the Routes request made with

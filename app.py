@@ -17,6 +17,8 @@ load_dotenv()  # before `import config`, which reads the environment at import t
 import config  # noqa: E402
 import driver
 import location
+import maps_links
+import recommend
 from detour import (DEFAULTS, breakeven_miles, rank_stations, reference_price,
                     sensitivity_table)
 from forecast import lagged_corr, rolling_origin_eval, treat_series
@@ -129,6 +131,49 @@ with st.container(border=True):
         tank = st.number_input("Tank size (gallons)", 5.0, 40.0, 13.0, 0.5, key="tank")
     st.caption(f"About {tank * mpg:.0f} miles on a full tank at this mpg.")
 
+# "Your trip": where from and to, and how wide to search. In google mode the inputs sit in a form,
+# so typing an address does not start a paid search on every keystroke: it starts on "Find stations".
+origin = destination = None
+with st.container(border=True):
+    st.markdown("**Your trip**")
+    corridor_help = ("How far from your route a station can be and still be listed. For example, "
+                     "3 km each side searches a 6 km wide strip along the route.")
+    if provider == "google" and config.GOOGLE_API_KEY:
+        mine = st.session_state.get("my_location")
+        typed = None
+        if mine:
+            acc = st.session_state.get("my_location_accuracy")
+            st.caption(f"Using your current location ({mine[0]:.4f}, {mine[1]:.4f})"
+                       + (f", accuracy about {acc} m" if acc else "")
+                       + ". It is used only for this route and is not saved.")
+            if st.button("Use the typed address instead"):
+                st.session_state["my_location"] = None
+                st.rerun()
+        else:
+            fix = location.parse_fix(location.request_location("geo_button"))
+            if fix and "coords" in fix:
+                st.session_state["my_location"] = fix["coords"]
+                st.session_state["my_location_accuracy"] = fix["accuracy"]
+                st.session_state["my_location_error"] = None
+                st.rerun()
+            elif fix:
+                st.session_state["my_location_error"] = fix["error"]
+            if st.session_state.get("my_location_error"):
+                st.warning(st.session_state["my_location_error"])
+        with st.form("trip_form", border=False):
+            if not mine:
+                typed = st.text_input("Origin", "Sarasota, FL", key="trip_origin")
+            destination = st.text_input("Destination", "Orlando, FL", key="trip_destination")
+            buffer_km = st.number_input("Search corridor width (km each side)", 1.0, 10.0, 3.0,
+                                        0.5, key="buffer_km", help=corridor_help)
+            st.form_submit_button("Find stations", type="primary", icon=":material/search:")
+        origin = location.resolve_origin(mine, typed)
+    else:
+        st.caption("Synthetic test mode: the route is always Sarasota to Orlando. Typing your own "
+                   "trip and using your current location need PROVIDER=google (live route data).")
+        buffer_km = st.number_input("Search corridor width (km each side)", 1.0, 10.0, 3.0, 0.5,
+                                    key="buffer_km", help=corridor_help)
+
 with st.sidebar:
     st.header("Trip and time")
     st.caption("Drag a slider or type the exact value in the box beside it.")
@@ -145,39 +190,6 @@ with st.sidebar:
         "Average speed on detours (mph)", 20.0, 70.0, DEFAULTS["speed_mph"], 1.0, "speed",
         help="Used to turn detour miles into detour minutes. For example, 2 extra miles at 30 "
              "mph is 4 minutes.")
-    buffer_km = slider_with_number(
-        "Search corridor width (km each side)", 1.0, 10.0, 3.0, 0.5, "buffer_km",
-        help="How far from your route a station can be and still be listed. For example, 3 km "
-             "each side searches a 6 km wide strip along the route.")
-    origin = destination = None
-    if provider == "google" and config.GOOGLE_API_KEY:
-        mine = st.session_state.get("my_location")
-        typed = None
-        if mine:
-            acc = st.session_state.get("my_location_accuracy")
-            st.caption(f"Using your current location ({mine[0]:.4f}, {mine[1]:.4f})"
-                       + (f", accuracy about {acc} m" if acc else "")
-                       + ". It is used only for this route and is not saved.")
-            if st.button("Use the typed address instead"):
-                st.session_state["my_location"] = None
-                st.rerun()
-        else:
-            typed = st.text_input("Origin", "Sarasota, FL")
-            fix = location.parse_fix(location.request_location("geo_button"))
-            if fix and "coords" in fix:
-                st.session_state["my_location"] = fix["coords"]
-                st.session_state["my_location_accuracy"] = fix["accuracy"]
-                st.session_state["my_location_error"] = None
-                st.rerun()
-            elif fix:
-                st.session_state["my_location_error"] = fix["error"]
-            if st.session_state.get("my_location_error"):
-                st.warning(st.session_state["my_location_error"])
-        origin = location.resolve_origin(mine, typed)
-        destination = st.text_input("Destination", "Orlando, FL")
-    else:
-        st.caption("Using your current location as the origin needs PROVIDER=google (live route "
-                   "data). The synthetic test mode always uses the same fixed route.")
 
 
 @st.cache_data(show_spinner="Loading prices...", ttl=3600)
@@ -256,49 +268,96 @@ with tab_help:
             "- **MPGe**: the electric-car equivalent of mpg; not gallons.")
 
 # ---------------------------------------------------------------- where to stop
+MAPS_HOME = "https://www.google.com/maps"
+
+
+def maps_buttons(best, live):
+    """'Open in Google Maps' and 'Navigate via this station'. In the synthetic mode the stations
+    are made up, so the buttons stay off instead of pointing at places that do not exist."""
+    pin = nav = None
+    if live:
+        try:
+            pin = maps_links.pin_url(best["lat"], best["lng"], best["id"])
+            nav = maps_links.directions_url(origin, destination, (best["lat"], best["lng"]),
+                                            best["id"])
+        except ValueError:  # e.g. an empty destination: leave that button off
+            pass
+    with st.container(horizontal=True):
+        st.link_button("Open in Google Maps", pin or MAPS_HOME, icon=":material/location_on:",
+                       disabled=pin is None, key="open_pin")
+        st.link_button("Navigate via this station", nav or MAPS_HOME,
+                       icon=":material/directions:", type="primary", disabled=nav is None,
+                       key="open_nav")
+    if not live:
+        st.caption("These buttons open Google Maps at the real station. They are off in the "
+                   "synthetic test mode because its stations are made up.")
+
+
 with tab_trip:
-    st.caption("What this tab answers: which station on your route is worth a detour. Start by "
-               "checking the prices below; the ranking updates as you edit them.")
+    st.caption("What this tab answers: which station on your route is worth a detour, and where "
+               "it is. The answer comes first; prices, settings and details are below it.")
+    answer = st.container()  # the answer, filled below once the prices are known
     stations = trip["stations"]
-    st.subheader("Station prices (edit any price: typed prices always work)")
-    table = pd.DataFrame([{"id": s["id"], "name": s["name"], "price": s["price"]}
-                          for s in stations])
-    edited = st.data_editor(table, disabled=["id", "name"], hide_index=True,
-                            width="stretch", key="price_editor",
-                            alt="Station prices; edit the price column to change the ranking")
-    price_by_id = dict(zip(edited["id"], edited["price"]))
-    priced = [{**s, "price": (None if pd.isna(price_by_id.get(s["id"])) else
-                              float(price_by_id[s["id"]]))} for s in stations]
-    p_ref = reference_price(priced)
-    if p_ref is None:
-        p_ref = st.number_input("No priced station is on the route: type the price you would "
-                                "pay on the route ($/gal)", 2.0, 6.0, 3.6, 0.01)
+    with st.expander("Edit prices and settings", icon=":material/tune:"):
+        min_saving = st.number_input(
+            "Only recommend a stop that saves at least ($)", 0.0, 20.0,
+            recommend.MIN_SAVING_DEFAULT, 0.25, key="min_saving",
+            help="Below this saving the app tells you to fill up at the first station on your "
+                 "route. The default of $0.50 is an assumption: a smaller saving is not worth "
+                 "the stop.")
+        st.markdown("**Station prices** (typed prices always work)")
+        table = pd.DataFrame([{"id": s["id"], "name": s["name"], "price": s["price"]}
+                              for s in stations], columns=["id", "name", "price"])
+        edited = st.data_editor(table, disabled=["id", "name"], hide_index=True,
+                                column_order=["name", "price"], width="stretch",
+                                key="price_editor",
+                                alt="Station prices; edit the price column to change the ranking")
+        price_by_id = dict(zip(edited["id"], edited["price"]))
+        priced = [{**s, "price": (None if pd.isna(price_by_id.get(s["id"])) else
+                                  float(price_by_id[s["id"]]))} for s in stations]
+        p_ref = reference_price(priced)
+        if p_ref is None:
+            p_ref = st.number_input("No priced station is on the route: type the price you would "
+                                    "pay on the route ($/gal)", 2.0, 6.0, 3.6, 0.01)
     detoured = compute_detours({**trip, "stations": priced})
     ranked = rank_stations(detoured, p_ref, gallons, mpg, vot, speed)
-    if not ranked:
-        st.info("No station has a price yet. Type prices in the table above.")
-    else:
-        best = ranked[0]
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Reference price on route", f"${p_ref:.2f}/gal", border=True)
-        c2.metric("Best station", best["name"], f"${best['price']:.2f}/gal", border=True)
-        c3.metric("Net benefit", f"${best['net_benefit']:.2f}",
-                  "detour pays off" if best["net_benefit"] > 0 else "do not detour",
-                  border=True)
-        cols = ["name", "price", "off_route_m", "extra_miles", "extra_minutes", "net_benefit"]
-        if trip["mode"] == "google":
-            cols.append("detour_source")  # routes = exact Routes API, approx = out-and-back
-        show = pd.DataFrame(ranked)[cols]
+    rec = recommend.recommend(ranked, min_saving)
+    live = trip["mode"] == "google"
+    best_id = rec["best"]["id"] if rec["verdict"] == "go" else None
+
+    with answer:
         with st.container(border=True):
-            st.markdown("**Ranked stations**")
-            st.dataframe(show.head(10), hide_index=True, width="stretch",
-                         alt="Stations ranked by net benefit", column_config={
-                "name": "Station", "price": st.column_config.NumberColumn("Price ($/gal)"),
-                "off_route_m": st.column_config.NumberColumn("Off route (m)"),
-                "extra_miles": st.column_config.NumberColumn("Extra miles"),
-                "extra_minutes": st.column_config.NumberColumn("Extra minutes"),
-                "net_benefit": st.column_config.NumberColumn("Net benefit ($)"),
-                "detour_source": "Detour source"})
+            if not stations:
+                st.warning("No stations were listed within the search corridor. Widen the "
+                           "corridor under Your trip and press Find stations.",
+                           title="No stations found near this route")
+            else:
+                title, body = recommend.summary(rec)
+                if rec["verdict"] == "go":
+                    st.success(body, title=title, icon=":material/local_gas_station:")
+                    maps_buttons(rec["best"], live)
+                elif rec["verdict"] == "skip":
+                    st.info(body, title=title, icon=":material/info:")
+                else:
+                    st.warning(body, title=title)
+        if rec["alternatives"]:
+            st.markdown("**Other good options**")
+            for col, alt in zip(st.columns(len(rec["alternatives"])), rec["alternatives"]):
+                with col.container(border=True, height="stretch"):
+                    st.markdown(f"**{recommend.md_escape(alt['name'])}**")
+                    st.caption(f"${alt['price']:.2f}/gal · saves ${alt['net_benefit']:.2f} · "
+                               f"{alt['extra_minutes']:.0f} min detour")
+        if ranked:
+            best = ranked[0]
+            with st.container(horizontal=True):
+                st.metric("Price without detouring", f"${p_ref:.2f}/gal", border=True,
+                          help="The median price of stations right on your route.")
+                st.metric("Best option", best["name"], f"${best['price']:.2f}/gal", border=True)
+                st.metric("You save (after the detour)", f"${best['net_benefit']:.2f}",
+                          "detour pays off" if best["net_benefit"] > 0 else "do not detour",
+                          border=True)
+
+    if ranked:
         with st.container(border=True):
             st.markdown("**Route and stations**")
             if trip["mode"] == "fixture":
@@ -307,27 +366,57 @@ with tab_trip:
                 fig.add_trace(go.Scattermap(lat=path[:, 0], lon=path[:, 1], mode="lines",
                                             line=dict(width=4, color="#1f77b4"), name="Route"))
                 fig.add_trace(go.Scattermap(
-                    lat=[r["lat"] for r in ranked], lon=[r["lng"] for r in ranked], mode="markers",
+                    lat=[r["lat"] for r in ranked], lon=[r["lng"] for r in ranked],
+                    mode="markers",
                     marker=dict(size=11, color=[r["net_benefit"] for r in ranked],
                                 colorscale="RdYlGn", cmid=0, showscale=True,
                                 colorbar=dict(title="Net $")),
                     text=[f"{r['name']}: ${r['price']:.2f} (net ${r['net_benefit']:.2f})"
                           for r in ranked], name="Stations"))
+                if rec["verdict"] == "go":
+                    b = rec["best"]
+                    fig.add_trace(go.Scattermap(lat=[b["lat"]], lon=[b["lng"]], mode="markers",
+                                                marker=dict(size=22, color="#1E3A8A"),
+                                                text=[b["name"]], name="Recommended"))
                 fig.update_layout(map=dict(style="carto-positron",
-                                           center=dict(lat=path[:, 0].mean(), lon=path[:, 1].mean()),
-                                           zoom=7.2), height=520, margin=dict(l=0, r=0, t=0, b=0),
+                                           center=dict(lat=path[:, 0].mean(),
+                                                       lon=path[:, 1].mean()), zoom=7.2),
+                                  height=520, margin=dict(l=0, r=0, t=0, b=0),
                                   legend=dict(orientation="h", yanchor="bottom", y=1.01, x=0))
                 st.caption("Synthetic route and stations, not real roads: the route is a straight "
                            "line between four cities and the stations are random points near it.")
                 st.plotly_chart(fig, width="stretch",
-                                alt="Map of the synthetic route with stations colored by net benefit")
+                                alt="Map of the synthetic route with stations colored by net "
+                                    "benefit; the recommended station is the large dark marker")
             elif config.GOOGLE_MAPS_JS_KEY:
-                components.html(build_map_html(config.GOOGLE_MAPS_JS_KEY, trip["path"], ranked),
-                                height=520)
+                components.html(build_map_html(config.GOOGLE_MAPS_JS_KEY, trip["path"], ranked,
+                                               best_id=best_id), height=520)
             else:
                 st.warning("Google mode: Places content must be shown on a Google map. Set "
                            "GOOGLE_MAPS_JS_KEY (a referrer-restricted browser key) to show it; "
                            "until then only the table is shown.")
+        with st.expander("All stations", icon=":material/table:"):
+            cols = ["name", "price", "net_benefit", "extra_minutes", "extra_miles", "off_route_m"]
+            if live:
+                cols.append("detour_source")  # routes = exact Routes API, approx = out-and-back
+            frame = pd.DataFrame(ranked)
+            show = frame[[c for c in cols if c in frame.columns]]  # tolerate a missing column
+            st.dataframe(show.head(25), hide_index=True, width="stretch",
+                         alt="All stations ranked by how much they save", column_config={
+                "name": "Station", "price": st.column_config.NumberColumn("Price ($/gal)"),
+                "net_benefit": st.column_config.NumberColumn("You save ($)"),
+                "extra_minutes": st.column_config.NumberColumn("Detour (min)"),
+                "extra_miles": st.column_config.NumberColumn("Detour (miles)"),
+                "off_route_m": st.column_config.NumberColumn("Off route (m)"),
+                "detour_source": "Detour source"})
+        with st.expander("How the saving is calculated", icon=":material/calculate:"):
+            st.markdown(
+                "**You save** = gallons x (price without detouring - station price) - the fuel "
+                "burned on the detour - the value of the detour time. *Price without "
+                "detouring* is the median price of stations right on your route (or the price "
+                "you type). In google mode the detour comes from Google Routes for the "
+                "cheapest stations (`routes`) and from a straight out-and-back estimate for "
+                "the others (`approx`).")
 
 # ---------------------------------------------------------------- when to fill up
 with tab_when:

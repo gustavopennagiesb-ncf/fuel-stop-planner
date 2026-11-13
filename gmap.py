@@ -19,16 +19,22 @@ function initMap() {
   ROUTE.forEach(p => bounds.extend(p));
   new google.maps.Polyline({path: ROUTE, map: map, strokeColor: "#1f77b4", strokeWeight: 4});
   const info = new google.maps.InfoWindow();
+  const show = (m, s) => {
+    const box = document.createElement("div");   // textContent: place names are untrusted
+    box.textContent = s.text;
+    info.setContent(box);
+    info.open(map, m);
+  };
   STATIONS.forEach(s => {
     const pos = {lat: s.lat, lng: s.lng};
     const m = new google.maps.Marker({position: pos, map: map, title: s.name,
-      label: {text: s.price, fontSize: "11px", fontWeight: "bold"}});
-    m.addListener("click", () => {
-      const box = document.createElement("div");   // textContent: place names are untrusted
-      box.textContent = s.text;
-      info.setContent(box);
-      info.open(map, m);
-    });
+      zIndex: s.best ? 1000 : 1, opacity: s.best ? 1 : 0.8,
+      icon: s.best ? {path: google.maps.SymbolPath.CIRCLE, scale: 15, fillColor: "#1E3A8A",
+                      fillOpacity: 1, strokeColor: "#ffffff", strokeWeight: 3} : undefined,
+      label: {text: s.price, fontSize: s.best ? "12px" : "11px", fontWeight: "bold",
+              color: s.best ? "#ffffff" : "#000000"}});
+    m.addListener("click", () => show(m, s));
+    if (s.best) { show(m, s); }
     bounds.extend(pos);
   });
   map.fitBounds(bounds);
@@ -44,12 +50,14 @@ def _js(obj):
             .replace("\u2028", "\\u2028").replace("\u2029", "\\u2029"))
 
 
-def build_map_html(js_key, path, ranked):
-    """path: [(lat, lng)]; ranked: stations with name, price, net_benefit, lat, lng."""
+def build_map_html(js_key, path, ranked, best_id=None):
+    """path: [(lat, lng)]; ranked: stations with name, price, net_benefit, lat, lng; the station
+    whose id is `best_id` (the recommendation) is drawn larger and its details open."""
     route = [{"lat": lat, "lng": lng} for lat, lng in path]
     stations = [{"lat": r["lat"], "lng": r["lng"], "name": r["name"],
+                 "best": best_id is not None and r.get("id") == best_id,
                  "price": f"{r['price']:.2f}",
-                 "text": f"{r['name']}: ${r['price']:.2f}/gal (net ${r['net_benefit']:.2f})"}
+                 "text": f"{r['name']}: ${r['price']:.2f}/gal (saves ${r['net_benefit']:.2f})"}
                 for r in ranked]
     return (TEMPLATE.replace("__ROUTE__", _js(route)).replace("__STATIONS__", _js(stations))
             .replace("__KEY__", quote(js_key, safe="")))

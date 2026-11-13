@@ -89,7 +89,7 @@ def make_app(monkeypatch, *, mode, fix=None, session=None):
 
 
 def captions(app):
-    return " ".join(c.value for c in app.sidebar.caption)
+    return " ".join(c.value for c in app.caption)
 
 
 def test_fixture_mode_explains_that_location_needs_google_mode(monkeypatch):
@@ -109,14 +109,14 @@ def test_a_fix_becomes_the_route_origin(monkeypatch):
 def test_permission_denied_keeps_the_typed_address_and_says_why(monkeypatch):
     app, origins = make_app(monkeypatch, mode="google", fix={"error_code": 1})
     assert origins[-1] == "Sarasota, FL"
-    assert any(location.MESSAGES["denied"] in w.value for w in app.sidebar.warning)
+    assert any(location.MESSAGES["denied"] in w.value for w in app.warning)
     assert not app.exception
 
 
 def test_clearing_returns_to_the_typed_address(monkeypatch):
     app, origins = make_app(monkeypatch, mode="google", session={"my_location": (27.3, -82.5)})
     assert origins[-1] == (27.3, -82.5)
-    next(b for b in app.sidebar.button if "typed address" in b.label).click().run()
+    next(b for b in app.button if "typed address" in b.label).click().run()
     assert origins[-1] == "Sarasota, FL"
     assert "my_location" not in app.session_state or app.session_state["my_location"] is None
 

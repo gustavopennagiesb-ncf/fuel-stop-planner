@@ -35,9 +35,13 @@ def test_how_to_use_covers_every_tab_and_driver_mode(at):
     assert "Which tab should I open?" in text
 
 
+def test_corridor_width_has_a_tip_with_an_example(at):
+    box = next(n for n in at.number_input if n.label.startswith("Search corridor width"))
+    assert "for example" in box.help.lower()
+
+
 def test_sidebar_controls_have_tips_with_an_example(at):
-    wanted = ("Gallons to buy", "Value of your time ($/h)", "Average speed on detours (mph)",
-              "Search corridor width (km each side)")
+    wanted = ("Gallons to buy", "Value of your time ($/h)", "Average speed on detours (mph)")
     by_label = {s.label: s for s in at.sidebar.slider}
     for label in wanted:
         assert by_label[label].help, f"{label} has no tip"
