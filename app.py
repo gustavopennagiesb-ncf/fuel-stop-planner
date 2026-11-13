@@ -211,7 +211,7 @@ with st.container(border=True):
                                     key="buffer_km", help=corridor_help)
 
 with st.sidebar:
-    st.header("Trip and time")
+    st.header("Fill-up and time")
     st.caption("Drag a slider or type the exact value in the box beside it.")
     gallons = slider_with_number(
         "Gallons to buy", 3.0, 25.0, DEFAULTS["gallons"], 0.5, "gallons",
@@ -264,7 +264,8 @@ with tab_help:
     st.subheader("How to use this app")
     st.markdown(
         "**Start with \"Your car\" at the top:** pick your car (or set the mpg) and your tank "
-        "size. The sidebar holds the trip and time settings. Hover the small (?) next to a "
+        "size, then **\"Your trip\"** for where you are going. The sidebar holds the fill-up and "
+        "time settings (gallons, value of your time, speed). Hover the small (?) next to a "
         "control for a tip. Every tab reads those values.\n\n"
         "**Which tab should I open?**\n"
         "- *I am on a trip and want the best station on the way* → **Where to stop**. Edit any "
@@ -364,6 +365,9 @@ with tab_trip:
     live = trip["mode"] == "google"
     best_id = rec["best"]["id"] if rec["verdict"] == "go" else None
 
+    cheap = recommend.cheapest(ranked)
+    cheap_is_best = bool(cheap and best_id and cheap["id"] == best_id)
+
     with answer:
         with st.container(border=True):
             if not stations:
@@ -373,14 +377,15 @@ with tab_trip:
             else:
                 title, body = recommend.summary(rec)
                 if rec["verdict"] == "go":
+                    if cheap_is_best:
+                        body += " It is also the cheapest gas on this route."
                     st.success(body, title=title, icon=":material/local_gas_station:")
                     maps_buttons(rec["best"], live)
                 elif rec["verdict"] == "skip":
                     st.info(body, title=title, icon=":material/info:")
                 else:
                     st.warning(body, title=title)
-        cheap = recommend.cheapest(ranked)
-        if cheap:  # the lowest price on the route, which is not always the stop that saves most
+        if cheap and not cheap_is_best:  # a cheaper station that the detour may not justify
             with st.container(border=True):
                 headline, detail = recommend.describe_cheapest(cheap, p_ref, best_id)
                 st.markdown(f"**{headline}**")
@@ -400,14 +405,12 @@ with tab_trip:
                     st.caption(f"${alt['price']:.2f}/gal · saves ${alt['net_benefit']:.2f} · "
                                f"{alt['extra_minutes']:.0f} min detour")
         if ranked:
-            best = ranked[0]
             with st.container(horizontal=True):
                 st.metric("Price without detouring", f"${p_ref:.2f}/gal", border=True,
-                          help="The median price of stations right on your route.")
-                st.metric("Best option", best["name"], f"${best['price']:.2f}/gal", border=True)
-                st.metric("You save (after the detour)", f"${best['net_benefit']:.2f}",
-                          "detour pays off" if best["net_benefit"] > 0 else "do not detour",
-                          border=True)
+                          help="The median price of stations right on your route: what the same "
+                               "fill-up costs if you do not leave the route.")
+                st.metric("Stations with a price", f"{len(ranked)}", border=True,
+                          help="Stations inside your search corridor that have a price.")
 
     if ranked:
         with st.container(border=True):
@@ -560,7 +563,7 @@ with tab_eda:
 # ---------------------------------------------------------------- sensitivity
 with tab_sens:
     st.caption("What this tab answers: how many extra miles of detour a given price gap is "
-               "worth, at your mpg and value of time (set in the sidebar).")
+               "worth, at your mpg (Your car) and value of time (sidebar).")
     st.subheader("How far is a detour worth it?")
     st.write("Break-even extra miles for a price gap (columns, $/gal) and value of time "
              "(rows, $/h), using your gallons, mpg and speed.")

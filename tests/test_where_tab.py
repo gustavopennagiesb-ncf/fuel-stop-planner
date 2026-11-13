@@ -193,7 +193,7 @@ def test_when_the_cheapest_is_also_the_pick_there_is_no_duplicate_link(monkeypat
     sts = [s for s in crafted() if s["id"] != "far"]
     app, _ = make_app(monkeypatch, mode="google", stations=sts)
     assert "Open cheapest in Google Maps" not in links(app)
-    assert any("also the recommended stop" in c.value for c in app.caption)
+    assert set(links(app)) == {"Open in Google Maps", "Navigate via this station"}
 
 
 # --------------------------------------------------------------------- the Google map embed
@@ -285,3 +285,19 @@ def test_without_a_browser_key_the_text_boxes_are_used(monkeypatch):
     monkeypatch.setattr(config, "GOOGLE_MAPS_JS_KEY", "")
     app, _ = make_app(monkeypatch, mode="google")
     assert trip_boxes(app) == {"trip_origin_text", "trip_destination_text"}
+
+
+def test_when_the_cheapest_is_the_recommended_stop_it_is_one_card_not_two(monkeypatch):
+    """The same station must not be announced twice: the green card says it is also the cheapest."""
+    app, _ = make_app(monkeypatch, stations=[s for s in crafted() if s["id"] != "far"])
+    assert not any("Cheapest gas on this route" in m.value for m in app.markdown)
+    assert "also the cheapest" in app.get("success")[0].proto.body.lower()
+
+
+def test_the_answer_is_not_repeated_in_the_metrics(monkeypatch):
+    """The green card already names the station and the saving; the metric row adds the context
+    the card cannot: what the same fill-up costs without detouring."""
+    app, _ = make_app(monkeypatch)
+    labels = {m.label for m in app.metric}
+    assert "Price without detouring" in labels
+    assert "Best option" not in labels and "You save (after the detour)" not in labels

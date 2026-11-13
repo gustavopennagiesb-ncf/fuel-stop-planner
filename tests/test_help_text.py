@@ -54,3 +54,23 @@ def test_glossary_defines_the_jargon(at):
     text = " ".join(m.value for m in glossary[0].markdown)
     for term in ("Net benefit", "Reference price", "Detour source", "EDA", "Naive forecast"):
         assert term in text
+
+
+def test_the_help_points_to_where_the_settings_really_are(at):
+    """"Your car" and "Your trip" are cards on the page; only the fill-up and time settings are
+    in the sidebar."""
+    text = " ".join(m.value for m in at.markdown)
+    assert "Your car" in text and "Your trip" in text
+    assert "sidebar holds the trip" not in text
+
+
+def test_no_tab_sends_the_user_to_the_sidebar_for_the_mpg(at):
+    intros = [c.value for c in at.caption if c.value.startswith(INTRO)]
+    mpg_intro = next(c for c in intros if "detour a given price gap" in c)
+    assert "mpg (Your car)" in mpg_intro
+
+
+def test_the_sidebar_header_names_what_the_sidebar_holds(at):
+    assert at.sidebar.header[0].value == "Fill-up and time"
+    assert {s.label for s in at.sidebar.slider} == {
+        "Gallons to buy", "Value of your time ($/h)", "Average speed on detours (mph)"}

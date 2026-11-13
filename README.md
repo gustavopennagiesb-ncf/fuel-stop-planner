@@ -49,7 +49,7 @@ In `google` mode (day-1 check passed: Places returns U.S. fuel prices):
   your own key. If permission is denied, the typed address keeps working.
 
 ## Structure
-- `app.py` UI (7 tabs, including Driver mode; "Your car" at the top, trip settings in the sidebar) · `.streamlit/config.toml` light theme · `services.py` provider switch · `config.py` env flags
+- `app.py` UI (7 tabs, including Driver mode; "Your car" and "Your trip" cards on the page, fill-up and time settings in the sidebar) · `.streamlit/config.toml` light theme · `services.py` provider switch · `config.py` env flags
 - `providers/` `eia.py`, `places.py`, `routes.py`, `fixtures.py` (synthetic)
 - `gmap.py` Google Maps JS embed · `geo.py` polyline + corridor filter · `detour.py` break-even math · `forecast.py` baselines · `driver.py` driver-mode math
 - `llm.py` provider interface, number validator, template fallback
@@ -67,8 +67,9 @@ factors are constants in `driver.py`.
 ## Rules that shape the code
 - Google Places content may not be stored (only place IDs): fixtures are synthetic, and no
   recorded Google responses go in the repo.
-- Places/Routes content must be shown on a Google map. In `google` mode the Maps JS embed is
-  still TODO, so only the table is shown there.
+- Places/Routes content must be shown on a Google map: `gmap.py` builds that map and `app.py`
+  renders it with `st.iframe`. Without `GOOGLE_MAPS_JS_KEY` the stations are not drawn and the
+  app says so.
 - Keys come from environment variables or `st.secrets`, never from the repo.
 
 ## Day-1 checklist (run on your own machine)
