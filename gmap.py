@@ -1,7 +1,7 @@
 """Google Maps JavaScript embed for google mode.
 
 Google's terms require Places/Routes content to be shown on a Google map. This builds a
-self-contained HTML page (rendered with st.components.v1.html) that draws the route and the
+self-contained HTML page (rendered with st.iframe) that draws the route and the
 ranked stations. GOOGLE_MAPS_JS_KEY is a separate, referrer-restricted browser key: it is meant
 to be visible in the page, unlike the server-side GOOGLE_API_KEY, which is never used here.
 """

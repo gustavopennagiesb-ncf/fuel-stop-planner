@@ -8,7 +8,6 @@ import plotly.express as px
 import plotly.graph_objects as go
 import requests
 import streamlit as st
-import streamlit.components.v1 as components
 
 from envfile import load_dotenv
 
@@ -402,8 +401,10 @@ with tab_trip:
                                 alt="Map of the synthetic route with stations colored by net "
                                     "benefit; the recommended station is the large dark marker")
             elif config.GOOGLE_MAPS_JS_KEY:
-                components.html(build_map_html(config.GOOGLE_MAPS_JS_KEY, trip["path"], ranked,
-                                               best_id=best_id), height=520)
+                st.iframe(build_map_html(config.GOOGLE_MAPS_JS_KEY, trip["path"], ranked,
+                                         best_id=best_id), height=520,
+                          alt="Google map of the route and the stations; the recommended "
+                              "station is the large dark marker")
             else:
                 st.warning("Google mode: Places content must be shown on a Google map. Set "
                            "GOOGLE_MAPS_JS_KEY (a referrer-restricted browser key) to show it; "

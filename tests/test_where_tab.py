@@ -184,3 +184,19 @@ def test_when_the_cheapest_is_also_the_pick_there_is_no_duplicate_link(monkeypat
     app, _ = make_app(monkeypatch, mode="google", stations=sts)
     assert "Open cheapest in Google Maps" not in links(app)
     assert any("also the recommended stop" in c.value for c in app.caption)
+
+
+# --------------------------------------------------------------------- the Google map embed
+def test_the_google_map_uses_st_iframe_not_the_deprecated_components_html():
+    source = APP.read_text()
+    assert "components.html" not in source and "components.v1" not in source
+
+
+def test_google_mode_with_a_maps_key_draws_the_map_in_an_iframe(monkeypatch):
+    monkeypatch.setattr(config, "GOOGLE_MAPS_JS_KEY", "browser-key")
+    app, _ = make_app(monkeypatch, mode="google")
+    # make_app fakes load_trip in "google" mode but keeps fixture geometry; the map branch is
+    # chosen by trip["mode"] == "google" and the browser key
+    frames = app.get("iframe")
+    assert frames and "maps.googleapis.com/maps/api/js?key=browser-key" in frames[0].proto.srcdoc
+    assert not app.exception
