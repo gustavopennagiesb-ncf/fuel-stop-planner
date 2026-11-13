@@ -280,49 +280,54 @@ with tab_trip:
     else:
         best = ranked[0]
         c1, c2, c3 = st.columns(3)
-        c1.metric("Reference price on route", f"${p_ref:.2f}/gal")
-        c2.metric("Best station", best["name"], f"${best['price']:.2f}/gal")
+        c1.metric("Reference price on route", f"${p_ref:.2f}/gal", border=True)
+        c2.metric("Best station", best["name"], f"${best['price']:.2f}/gal", border=True)
         c3.metric("Net benefit", f"${best['net_benefit']:.2f}",
-                  "detour pays off" if best["net_benefit"] > 0 else "do not detour")
+                  "detour pays off" if best["net_benefit"] > 0 else "do not detour",
+                  border=True)
         cols = ["name", "price", "off_route_m", "extra_miles", "extra_minutes", "net_benefit"]
         if trip["mode"] == "google":
             cols.append("detour_source")  # routes = exact Routes API, approx = out-and-back
         show = pd.DataFrame(ranked)[cols]
-        st.dataframe(show.head(10), hide_index=True, width="stretch",
-                     alt="Stations ranked by net benefit", column_config={
-            "name": "Station", "price": st.column_config.NumberColumn("Price ($/gal)"),
-            "off_route_m": st.column_config.NumberColumn("Off route (m)"),
-            "extra_miles": st.column_config.NumberColumn("Extra miles"),
-            "extra_minutes": st.column_config.NumberColumn("Extra minutes"),
-            "net_benefit": st.column_config.NumberColumn("Net benefit ($)"),
-            "detour_source": "Detour source"})
-        if trip["mode"] == "fixture":
-            path = np.array(trip["path"])
-            fig = go.Figure()
-            fig.add_trace(go.Scattermap(lat=path[:, 0], lon=path[:, 1], mode="lines",
-                                        line=dict(width=4, color="#1f77b4"), name="Route"))
-            fig.add_trace(go.Scattermap(
-                lat=[r["lat"] for r in ranked], lon=[r["lng"] for r in ranked], mode="markers",
-                marker=dict(size=11, color=[r["net_benefit"] for r in ranked],
-                            colorscale="RdYlGn", cmid=0, showscale=True,
-                            colorbar=dict(title="Net $")),
-                text=[f"{r['name']}: ${r['price']:.2f} (net ${r['net_benefit']:.2f})"
-                      for r in ranked], name="Stations"))
-            fig.update_layout(map=dict(style="carto-positron",
-                                       center=dict(lat=path[:, 0].mean(), lon=path[:, 1].mean()),
-                                       zoom=7.2), height=520, margin=dict(l=0, r=0, t=0, b=0),
-                              legend=dict(orientation="h", yanchor="bottom", y=1.01, x=0))
-            st.caption("Synthetic route and stations, not real roads: the route is a straight "
-                       "line between four cities and the stations are random points near it.")
-            st.plotly_chart(fig, width="stretch",
-                            alt="Map of the synthetic route with stations colored by net benefit")
-        elif config.GOOGLE_MAPS_JS_KEY:
-            components.html(build_map_html(config.GOOGLE_MAPS_JS_KEY, trip["path"], ranked),
-                            height=520)
-        else:
-            st.warning("Google mode: Places content must be shown on a Google map. Set "
-                       "GOOGLE_MAPS_JS_KEY (a referrer-restricted browser key) to show it; "
-                       "until then only the table is shown.")
+        with st.container(border=True):
+            st.markdown("**Ranked stations**")
+            st.dataframe(show.head(10), hide_index=True, width="stretch",
+                         alt="Stations ranked by net benefit", column_config={
+                "name": "Station", "price": st.column_config.NumberColumn("Price ($/gal)"),
+                "off_route_m": st.column_config.NumberColumn("Off route (m)"),
+                "extra_miles": st.column_config.NumberColumn("Extra miles"),
+                "extra_minutes": st.column_config.NumberColumn("Extra minutes"),
+                "net_benefit": st.column_config.NumberColumn("Net benefit ($)"),
+                "detour_source": "Detour source"})
+        with st.container(border=True):
+            st.markdown("**Route and stations**")
+            if trip["mode"] == "fixture":
+                path = np.array(trip["path"])
+                fig = go.Figure()
+                fig.add_trace(go.Scattermap(lat=path[:, 0], lon=path[:, 1], mode="lines",
+                                            line=dict(width=4, color="#1f77b4"), name="Route"))
+                fig.add_trace(go.Scattermap(
+                    lat=[r["lat"] for r in ranked], lon=[r["lng"] for r in ranked], mode="markers",
+                    marker=dict(size=11, color=[r["net_benefit"] for r in ranked],
+                                colorscale="RdYlGn", cmid=0, showscale=True,
+                                colorbar=dict(title="Net $")),
+                    text=[f"{r['name']}: ${r['price']:.2f} (net ${r['net_benefit']:.2f})"
+                          for r in ranked], name="Stations"))
+                fig.update_layout(map=dict(style="carto-positron",
+                                           center=dict(lat=path[:, 0].mean(), lon=path[:, 1].mean()),
+                                           zoom=7.2), height=520, margin=dict(l=0, r=0, t=0, b=0),
+                                  legend=dict(orientation="h", yanchor="bottom", y=1.01, x=0))
+                st.caption("Synthetic route and stations, not real roads: the route is a straight "
+                           "line between four cities and the stations are random points near it.")
+                st.plotly_chart(fig, width="stretch",
+                                alt="Map of the synthetic route with stations colored by net benefit")
+            elif config.GOOGLE_MAPS_JS_KEY:
+                components.html(build_map_html(config.GOOGLE_MAPS_JS_KEY, trip["path"], ranked),
+                                height=520)
+            else:
+                st.warning("Google mode: Places content must be shown on a Google map. Set "
+                           "GOOGLE_MAPS_JS_KEY (a referrer-restricted browser key) to show it; "
+                           "until then only the table is shown.")
 
 # ---------------------------------------------------------------- when to fill up
 with tab_when:
@@ -362,10 +367,10 @@ with tab_eda:
         d["florida"] = clean
         d = d.interpolate(limit_direction="both")
         c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Weeks", f"{len(d):,}")
-        c2.metric("Missing weeks filled", rep["n_missing_filled"])
-        c3.metric("Price shocks flagged", rep["n_outliers_flagged"])
-        c4.metric("Latest Florida", f"${clean.iloc[-1]:.2f}")
+        c1.metric("Weeks", f"{len(d):,}", border=True)
+        c2.metric("Missing weeks filled", rep["n_missing_filled"], border=True)
+        c3.metric("Price shocks flagged", rep["n_outliers_flagged"], border=True)
+        c4.metric("Latest Florida", f"${clean.iloc[-1]:.2f}", border=True)
         st.caption(f"Treatment: missing weeks by linear interpolation; outliers: {treat}. Mean "
                    f"{rep['mean_before']:.3f} -> {rep['mean_after']:.3f}, SD "
                    f"{rep['std_before']:.3f} -> {rep['std_after']:.3f} (before -> after).")
@@ -432,28 +437,30 @@ with tab_driver:
     st.caption("What this tab answers: how many miles, hours of work and orders you can do "
                "before reaching your fuel reserve. Set your tank level first.")
     st.subheader("Driver mode: how far until I must refuel?")
-    c1, c2 = st.columns(2)
-    level = c1.select_slider("Tank level (eighths, read from the gauge)",
-                             options=list(range(0, 9)), value=4, key="driver_level")
-    reserve_label = c2.segmented_control(
-        "Reserve", ["Standard", "Conservative (1/4 tank)"], default="Standard",
-        key="driver_reserve_mode") or "Standard"
-    st.caption(f"Using tank {tank} gal and {mpg} mpg from Your car above: check both.")
-    reserve_gal = driver.reserve_gallons(
-        tank, "conservative" if reserve_label.startswith("Conservative") else "standard")
-    st.caption(f"Reserve: {reserve_gal:.1f} gal (about {reserve_gal * mpg:.0f} miles at your mpg)")
-
-    results = st.container()  # drawn here, right under the tank level, filled once the pace is known
-    st.markdown("**Your pace**")
-    c3, c4 = st.columns(2)
-    mph = c3.number_input("Miles per hour of work", min_value=1.0,
-                          value=driver.DEFAULT_MILES_PER_HOUR, step=1.0, key="driver_mph")
-    mpo = c4.number_input("Miles per order", min_value=1.0,
-                          value=driver.DEFAULT_MILES_PER_ORDER, step=1.0, key="driver_mpo")
-    st.caption("Defaults are assumptions, not measured values: 15 mi/h, 8 mi/order, reserve 15% "
-               "of tank (min 2 gal), low/high cases use mpg x 0.85 / x 1.10. Replace them with "
-               "your own numbers.")
-
+    with st.container(border=True):
+        c1, c2 = st.columns(2)
+        level = c1.select_slider("Tank level (eighths, read from the gauge)",
+                                 options=list(range(0, 9)), value=4, key="driver_level")
+        reserve_label = c2.segmented_control(
+            "Reserve", ["Standard", "Conservative (1/4 tank)"], default="Standard",
+            key="driver_reserve_mode") or "Standard"
+        st.caption(f"Using tank {tank} gal and {mpg} mpg from Your car above: check both.")
+        reserve_gal = driver.reserve_gallons(
+            tank, "conservative" if reserve_label.startswith("Conservative") else "standard")
+        st.caption(f"Reserve: {reserve_gal:.1f} gal (about {reserve_gal * mpg:.0f} miles at your mpg)")
+    # Drawn here, right under the tank inputs, and filled once the pace is known. No border of
+    # its own: the metrics inside are already cards.
+    results = st.container()
+    with st.container(border=True):
+        st.markdown("**Your pace**")
+        c3, c4 = st.columns(2)
+        mph = c3.number_input("Miles per hour of work", min_value=1.0,
+                              value=driver.DEFAULT_MILES_PER_HOUR, step=1.0, key="driver_mph")
+        mpo = c4.number_input("Miles per order", min_value=1.0,
+                              value=driver.DEFAULT_MILES_PER_ORDER, step=1.0, key="driver_mpo")
+        st.caption("Defaults are assumptions, not measured values: 15 mi/h, 8 mi/order, reserve 15% "
+                   "of tank (min 2 gal), low/high cases use mpg x 0.85 / x 1.10. Replace them with "
+                   "your own numbers.")
     rng = driver.miles_until_reserve(level, tank, mpg, reserve_gal)
     cases = [("Low", rng["low"]), ("Base", rng["base"]), ("High", rng["high"])]
     shown = [(n, driver.round_miles(m)) for n, m in cases]
@@ -467,7 +474,7 @@ with tab_driver:
     with results:
         with st.container(horizontal=True):  # one row even on a phone
             for name, m in cases:
-                st.metric(f"{name} miles", f"{driver.round_miles(m)} mi")
+                st.metric(f"{name} miles", f"{driver.round_miles(m)} mi", border=True)
         msg = driver.status(shown[0][1], shown[1][1])
         (st.warning if "refuel soon" in msg else st.info)(msg)
         st.dataframe(pd.DataFrame(rows, index=[n for n, _ in shown]).T, width="stretch",
