@@ -50,3 +50,23 @@ def summary(rec):
                 f"${rec['min_saving']:.2f}. Fill up at the first station on your route.")
     return ("No station has a price yet",
             'Open "Edit prices" below and type the price of a station to get a recommendation.')
+
+
+def cheapest(ranked):
+    """The station with the lowest price, whatever the detour (ties: the better saving)."""
+    return min(ranked, key=lambda s: (s["price"], -s["net_benefit"]), default=None)
+
+
+def describe_cheapest(station, p_ref, recommended_id=None):
+    """(headline, detail) for the cheapest station, including what its detour does to the saving."""
+    gap = p_ref - station["price"]
+    gap_text = (f"${gap:.2f} below" if gap >= 0.005 else f"${-gap:.2f} above")
+    net = station["net_benefit"]
+    outcome = (f"saves about ${net:.2f}" if net >= 0.005 else
+               f"costs you about ${-net:.2f}" if net <= -0.005 else "breaks even")
+    detail = (f"{gap_text} the usual price on your route, "
+              f"{_minutes(station['extra_minutes'])} detour. Stopping there {outcome}.")
+    if recommended_id is not None and station["id"] == recommended_id:
+        detail += " This is also the recommended stop."
+    return (f"Cheapest gas on this route: {md_escape(station['name'])} at "
+            f"${station['price']:.2f}/gal", detail)

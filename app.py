@@ -340,6 +340,19 @@ with tab_trip:
                     st.info(body, title=title, icon=":material/info:")
                 else:
                     st.warning(body, title=title)
+        cheap = recommend.cheapest(ranked)
+        if cheap:  # the lowest price on the route, which is not always the stop that saves most
+            with st.container(border=True):
+                headline, detail = recommend.describe_cheapest(cheap, p_ref, best_id)
+                st.markdown(f"**{headline}**")
+                st.caption(detail)
+                if live and cheap["id"] != best_id:
+                    try:
+                        st.link_button("Open cheapest in Google Maps",
+                                       maps_links.pin_url(cheap["lat"], cheap["lng"], cheap["id"]),
+                                       icon=":material/location_on:", key="open_cheapest")
+                    except ValueError:
+                        pass
         if rec["alternatives"]:
             st.markdown("**Other good options**")
             for col, alt in zip(st.columns(len(rec["alternatives"])), rec["alternatives"]):

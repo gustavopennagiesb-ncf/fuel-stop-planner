@@ -38,7 +38,7 @@ In `google` mode (day-1 check passed: Places returns U.S. fuel prices):
 - Stations are drawn on a Google map when `GOOGLE_MAPS_JS_KEY` is set (required by Google's terms);
   without it only the table is shown. Missing `GOOGLE_API_KEY` falls back to fixture data with a
   warning, and any load error falls back to fixtures instead of crashing.
-- Where to stop answers first ("Fill up at ...", or "No detour pays off enough"), with buttons that
+- Where to stop answers first ("Fill up at ...", or "No detour pays off enough"), the cheapest price on the route (with what its detour does to the saving), with buttons that
   open the station and a "navigate via this station" route in Google Maps (free links, no key).
   Origin, destination and corridor width are under "Your trip"; a paid search starts when you press
   "Find stations".

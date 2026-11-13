@@ -91,3 +91,46 @@ def test_a_very_short_detour_reads_under_one_minute_not_zero():
     assert "under 1 min" in body and "0 min" not in body
     _, body = rc.summary(rc.recommend([st("A", 1.0, miles=1.0, minutes=1.4)]))
     assert "1 min" in body and "under" not in body
+
+
+# ---------------------------------------------------------------- cheapest price
+def test_cheapest_is_the_lowest_price_whatever_the_ranking():
+    ranked = [st("Near", 1.0, price=3.60), st("Far", -0.5, price=3.40), st("Mid", 0.2, price=3.50)]
+    assert rc.cheapest(ranked)["name"] == "Far"
+
+
+def test_cheapest_breaks_price_ties_by_the_better_saving():
+    ranked = [st("A", 0.9, price=3.40), st("B", 0.4, price=3.40)]
+    assert rc.cheapest(ranked)["name"] == "A"
+    assert rc.cheapest(list(reversed(ranked)))["name"] == "A"
+
+
+def test_cheapest_of_nothing_is_none():
+    assert rc.cheapest([]) is None
+
+
+def test_describe_cheapest_when_it_is_also_the_recommended_stop():
+    a = st("Wawa", 1.5, price=3.40, minutes=1.2)
+    head, detail = rc.describe_cheapest(a, p_ref=3.60, recommended_id="Wawa")
+    assert head == "Cheapest gas on this route: Wawa at $3.40/gal"
+    assert "$0.20 below" in detail and "also the recommended stop" in detail
+
+
+def test_describe_cheapest_when_the_detour_eats_the_saving():
+    far = st("Far", -1.13, price=3.40, miles=6.2, minutes=8.3)
+    head, detail = rc.describe_cheapest(far, p_ref=3.625, recommended_id="Near")
+    assert "Far" in head and "$3.40/gal" in head
+    assert "$0.23 below" in detail and "8 min detour" in detail
+    assert "costs you about $1.13" in detail and "recommended" not in detail
+
+
+def test_describe_cheapest_when_it_still_saves_but_is_not_the_top_pick():
+    c = st("C", 0.6, price=3.45, minutes=3.0)
+    _, detail = rc.describe_cheapest(c, p_ref=3.60, recommended_id="Other")
+    assert "saves about $0.60" in detail
+
+
+def test_describe_cheapest_above_the_usual_price_and_hostile_names():
+    pricey = st("**$x$**", -0.1, price=3.70, minutes=0.2)
+    head, detail = rc.describe_cheapest(pricey, p_ref=3.60, recommended_id=None)
+    assert "\\*\\*\\$x\\$\\*\\*" in head and "$0.10 above" in detail and "under 1 min" in detail

@@ -149,3 +149,38 @@ def test_changing_the_corridor_waits_for_find_stations_too(monkeypatch):
     app.number_input(key="buffer_km").set_value(8.0)
     next(b for b in app.button if b.label == "Find stations").click().run()
     assert calls[-1][2] == 8000.0
+
+
+# --------------------------------------------------------------------- cheapest price
+def crafted():
+    """One cheap station far off the route and four near it: the cheapest price is not the stop
+    that saves the most."""
+    def s(sid, name, price, off):
+        return {"id": sid, "name": name, "lat": 27.5, "lng": -82.5, "price": price,
+                "off_route_m": off}
+    return [s("far", "Far Cheap", 3.40, 5000), s("n1", "Near 1", 3.55, 100),
+            s("n2", "Near 2", 3.60, 200), s("n3", "Near 3", 3.65, 300),
+            s("n4", "Near 4", 3.70, 400)]
+
+
+def test_the_cheapest_price_is_shown_even_when_a_nearer_stop_saves_more(monkeypatch):
+    app, _ = make_app(monkeypatch, stations=crafted())
+    assert app.get("success")[0].proto.title == "Fill up at Near 1"
+    text = " ".join(m.value for m in app.markdown) + " " + " ".join(c.value for c in app.caption)
+    assert "Cheapest gas on this route: Far Cheap at $3.40/gal" in text
+    assert "costs you about" in text  # the detour eats the saving, and it says so
+
+
+def test_the_cheapest_station_gets_its_own_map_link_in_google_mode(monkeypatch):
+    app, _ = make_app(monkeypatch, mode="google", stations=crafted())
+    pair = links(app)
+    assert "Open cheapest in Google Maps" in pair
+    assert query(pair["Open cheapest in Google Maps"].url)["query_place_id"] == ["ChIJ_0"]
+    assert query(pair["Open in Google Maps"].url)["query_place_id"] == ["ChIJ_1"]  # the pick
+
+
+def test_when_the_cheapest_is_also_the_pick_there_is_no_duplicate_link(monkeypatch):
+    sts = [s for s in crafted() if s["id"] != "far"]
+    app, _ = make_app(monkeypatch, mode="google", stations=sts)
+    assert "Open cheapest in Google Maps" not in links(app)
+    assert any("also the recommended stop" in c.value for c in app.caption)
