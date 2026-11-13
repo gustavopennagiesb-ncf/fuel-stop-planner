@@ -46,13 +46,18 @@ def pin_url(lat, lng, place_id=None):
     return _checked(url)
 
 
-def directions_url(origin, destination, via, via_place_id=None):
+def directions_url(origin, destination, via, via_place_id=None, origin_place_id=None,
+                   destination_place_id=None):
     """Driving directions from `origin` (optional: Maps then uses the current position) to
     `destination`, passing through the station `via` = (lat, lng)."""
     url = f"{BASE}/dir/?api=1&travelmode=driving"
     if origin is not None:
         url += f"&origin={_enc(_place(origin, 'origin'))}"
+        if origin_place_id and isinstance(origin, str):
+            url += f"&origin_place_id={_enc(str(origin_place_id))}"
     url += f"&destination={_enc(_place(destination, 'destination'))}"
+    if destination_place_id and isinstance(destination, str):
+        url += f"&destination_place_id={_enc(str(destination_place_id))}"
     if via is None:
         raise ValueError("the station to pass through is required")
     url += f"&waypoints={_enc(_coord(*via))}"

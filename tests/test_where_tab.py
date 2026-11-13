@@ -119,6 +119,7 @@ def test_the_links_carry_the_place_id_and_the_trip(monkeypatch):
 
 def test_a_location_origin_goes_into_the_navigation_link_as_coordinates(monkeypatch):
     app, _ = make_app(monkeypatch, mode="google", session={"my_location": (27.9506, -82.4572)})
+    next(b for b in app.button if b.label == "Find stations").click().run()
     nav = query(links(app)["Navigate via this station"].url)
     assert nav["origin"] == ["27.950600,-82.457200"]
 
@@ -133,11 +134,12 @@ def test_a_hostile_station_name_is_escaped_in_the_headline(monkeypatch):
 def test_typing_an_address_does_not_start_a_search_until_find_stations(monkeypatch):
     app, calls = make_app(monkeypatch, mode="google")
     first = len(calls)
-    app.text_input(key="trip_origin").set_value("Tampa, FL").run()
+    app.text_input(key="trip_origin_text").set_value("Tampa, FL").run()
     assert len(calls) == first, "typing alone started a (paid) search"
-    app.text_input(key="trip_origin").set_value("Tampa, FL")  # type and press the button together
+    assert any("You changed the trip" in c.value for c in app.caption)
     next(b for b in app.button if b.label == "Find stations").click().run()
     assert calls[-1][0] == "Tampa, FL" and len(calls) == first + 1
+    assert not any("You changed the trip" in c.value for c in app.caption)
     assert not app.exception
 
 
@@ -146,9 +148,17 @@ def test_changing_the_corridor_waits_for_find_stations_too(monkeypatch):
     first = len(calls)
     app.number_input(key="buffer_km").set_value(8.0).run()
     assert len(calls) == first
-    app.number_input(key="buffer_km").set_value(8.0)
     next(b for b in app.button if b.label == "Find stations").click().run()
     assert calls[-1][2] == 8000.0
+
+
+def test_an_empty_address_is_refused_with_a_message(monkeypatch):
+    app, calls = make_app(monkeypatch, mode="google")
+    first = len(calls)
+    app.text_input(key="trip_destination_text").set_value("   ").run()
+    assert any("cannot be empty" in w.value for w in app.warning)
+    assert not [b for b in app.button if b.label == "Find stations"]
+    assert len(calls) == first and not app.exception
 
 
 # --------------------------------------------------------------------- cheapest price
@@ -200,3 +210,78 @@ def test_google_mode_with_a_maps_key_draws_the_map_in_an_iframe(monkeypatch):
     frames = app.get("iframe")
     assert frames and "maps.googleapis.com/maps/api/js?key=browser-key" in frames[0].proto.srcdoc
     assert not app.exception
+
+
+# --------------------------------------------------------------------- address suggestions
+import places_autocomplete  # noqa: E402
+
+
+def trip_boxes(app):
+    """The plain text boxes of the trip card (the AI tab has its own text input)."""
+    return {t.key for t in app.text_input if t.key and t.key.startswith("trip_")}
+
+
+def with_suggestions(monkeypatch, picks=None):
+    """The browser key is set, and `picks` maps a box ('trip_origin_ac', ...) to what the address
+    widget would send back on the run after a pick."""
+    monkeypatch.setattr(config, "GOOGLE_MAPS_JS_KEY", "browser-key")
+    seen = []
+
+    def fake(key, js_key, placeholder="Type an address"):
+        seen.append((key, js_key))
+        return (picks or {}).get(key)
+
+    monkeypatch.setattr(places_autocomplete, "request_pick", fake)
+    return seen
+
+
+PICK = {"lat": 28.5383, "lng": -81.3792, "label": "Orlando, FL, USA", "place_id": "ChIJorl"}
+
+
+def test_the_address_boxes_use_the_browser_key(monkeypatch):
+    seen = with_suggestions(monkeypatch)
+    app, _ = make_app(monkeypatch, mode="google")
+    assert {k for k, _ in seen} == {"trip_origin_ac", "trip_destination_ac"}
+    assert all(js == "browser-key" for _, js in seen)
+    assert not trip_boxes(app)  # no plain text boxes while suggestions work
+    assert not app.exception
+
+
+def test_picking_a_suggestion_waits_for_find_stations_then_uses_exact_coordinates(monkeypatch):
+    with_suggestions(monkeypatch, {"trip_destination_ac": PICK})
+    app, calls = make_app(monkeypatch, mode="google")
+    first = len(calls)
+    assert any("Selected: Orlando, FL, USA" in c.value for c in app.caption)
+    assert any("You changed the trip" in c.value for c in app.caption)
+    assert len(calls) == first, "a pick started a (paid) search"
+    next(b for b in app.button if b.label == "Find stations").click().run()
+    assert calls[-1][1] == (28.5383, -81.3792)  # Routes gets the exact point, not the words
+    assert not app.exception
+
+
+def test_the_navigation_link_carries_the_picked_places_ids(monkeypatch):
+    with_suggestions(monkeypatch, {"trip_destination_ac": PICK})
+    app, _ = make_app(monkeypatch, mode="google")
+    next(b for b in app.button if b.label == "Find stations").click().run()
+    nav = query(links(app)["Navigate via this station"].url)
+    assert nav["destination"] == ["Orlando, FL, USA"] and nav["destination_place_id"] == ["ChIJorl"]
+
+
+def test_a_hostile_picked_label_is_escaped_on_screen(monkeypatch):
+    with_suggestions(monkeypatch, {"trip_destination_ac": {**PICK, "label": "**x**[a](http://e)"}})
+    app, _ = make_app(monkeypatch, mode="google")
+    assert any("Selected: \\*\\*x\\*\\*\\[a\\]\\(http://e\\)" in c.value for c in app.caption)
+
+
+def test_when_suggestions_are_unavailable_the_text_boxes_come_back_with_a_warning(monkeypatch):
+    with_suggestions(monkeypatch, {"trip_origin_ac": {"error_code": 1}})
+    app, _ = make_app(monkeypatch, mode="google")
+    assert any(places_autocomplete.MESSAGES["unavailable"] in w.value for w in app.warning)
+    assert trip_boxes(app) == {"trip_origin_text", "trip_destination_text"}
+    assert not app.exception
+
+
+def test_without_a_browser_key_the_text_boxes_are_used(monkeypatch):
+    monkeypatch.setattr(config, "GOOGLE_MAPS_JS_KEY", "")
+    app, _ = make_app(monkeypatch, mode="google")
+    assert trip_boxes(app) == {"trip_origin_text", "trip_destination_text"}

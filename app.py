@@ -16,8 +16,10 @@ load_dotenv()  # before `import config`, which reads the environment at import t
 import config  # noqa: E402
 import driver
 import location
+import places_autocomplete
 import maps_links
 import recommend
+import trip_input as ti
 from detour import (DEFAULTS, breakeven_miles, rank_stations, reference_price,
                     sensitivity_table)
 from forecast import lagged_corr, rolling_origin_eval, treat_series
@@ -130,16 +132,37 @@ with st.container(border=True):
         tank = st.number_input("Tank size (gallons)", 5.0, 40.0, 13.0, 0.5, key="tank")
     st.caption(f"About {tank * mpg:.0f} miles on a full tank at this mpg.")
 
-# "Your trip": where from and to, and how wide to search. In google mode the inputs sit in a form,
-# so typing an address does not start a paid search on every keystroke: it starts on "Find stations".
+# "Your trip": where from and to, and how wide to search. What is typed, picked or located is only
+# "pending": a paid search starts when "Find stations" is pressed, never on a keystroke or a pick.
+def address_input(name, label, default_text):
+    """An address box with Google's suggestions when the browser key is set (and they work), else a
+    plain text box. Returns the pending place, or None if the text box is empty."""
+    key = f"trip_{name}"
+    if config.GOOGLE_MAPS_JS_KEY and not st.session_state.get("suggestions_off"):
+        st.markdown(label)
+        parsed = places_autocomplete.parse_pick(places_autocomplete.request_pick(
+            f"{key}_ac", config.GOOGLE_MAPS_JS_KEY, "Type an address"))
+        if parsed and "coords" in parsed:
+            st.session_state[f"{key}_pick"] = ti.pick_place(parsed)
+        elif parsed:  # unavailable here (e.g. the key lacks the Places API): use plain text boxes
+            st.session_state["suggestions_off"] = True
+            st.session_state["suggestions_error"] = parsed["error"]
+            st.rerun()
+        picked = st.session_state.get(f"{key}_pick")
+        st.caption(f"Selected: {recommend.md_escape(picked['label'])}" if picked
+                   else f"Selected: {default_text} (type above and pick a suggestion to change)")
+        return picked or ti.text_place(default_text)
+    return ti.text_place(st.text_input(label, default_text, key=f"{key}_text"))
+
+
 origin = destination = None
 with st.container(border=True):
     st.markdown("**Your trip**")
     corridor_help = ("How far from your route a station can be and still be listed. For example, "
                      "3 km each side searches a 6 km wide strip along the route.")
     if provider == "google" and config.GOOGLE_API_KEY:
+        applied = st.session_state.setdefault("trip_applied", dict(ti.DEFAULT))
         mine = st.session_state.get("my_location")
-        typed = None
         if mine:
             acc = st.session_state.get("my_location_accuracy")
             st.caption(f"Using your current location ({mine[0]:.4f}, {mine[1]:.4f})"
@@ -159,14 +182,28 @@ with st.container(border=True):
                 st.session_state["my_location_error"] = fix["error"]
             if st.session_state.get("my_location_error"):
                 st.warning(st.session_state["my_location_error"])
-        with st.form("trip_form", border=False):
-            if not mine:
-                typed = st.text_input("Origin", "Sarasota, FL", key="trip_origin")
-            destination = st.text_input("Destination", "Orlando, FL", key="trip_destination")
-            buffer_km = st.number_input("Search corridor width (km each side)", 1.0, 10.0, 3.0,
-                                        0.5, key="buffer_km", help=corridor_help)
-            st.form_submit_button("Find stations", type="primary", icon=":material/search:")
-        origin = location.resolve_origin(mine, typed)
+        if st.session_state.get("suggestions_error"):
+            st.warning(st.session_state["suggestions_error"])
+        origin_place = ti.location_place(mine) if mine else address_input(
+            "origin", "Origin", ti.DEFAULT["origin"]["label"])
+        destination_place = address_input("destination", "Destination",
+                                          ti.DEFAULT["destination"]["label"])
+        corridor = st.number_input("Search corridor width (km each side)", 1.0, 10.0, 3.0, 0.5,
+                                   key="buffer_km", help=corridor_help)
+        if origin_place is None or destination_place is None:
+            st.warning("The origin and the destination cannot be empty.")
+        else:
+            pending = {"origin": origin_place, "destination": destination_place,
+                       "corridor": corridor}
+            pressed = st.button("Find stations", type="primary", icon=":material/search:")
+            if pressed:
+                applied = st.session_state["trip_applied"] = pending
+            elif ti.changed(pending, applied):
+                st.caption("You changed the trip. Press Find stations to search with the new "
+                           "origin, destination or corridor.")
+        origin = ti.route_point(applied["origin"])
+        destination = ti.route_point(applied["destination"])
+        buffer_km = applied["corridor"]
     else:
         st.caption("Synthetic test mode: the route is always Sarasota to Orlando. Typing your own "
                    "trip and using your current location need PROVIDER=google (live route data).")
@@ -277,8 +314,11 @@ def maps_buttons(best, live):
     if live:
         try:
             pin = maps_links.pin_url(best["lat"], best["lng"], best["id"])
-            nav = maps_links.directions_url(origin, destination, (best["lat"], best["lng"]),
-                                            best["id"])
+            applied_trip = st.session_state.get("trip_applied", ti.DEFAULT)
+            o_pt, o_id = ti.link_point(applied_trip["origin"])
+            d_pt, d_id = ti.link_point(applied_trip["destination"])
+            nav = maps_links.directions_url(o_pt, d_pt, (best["lat"], best["lng"]), best["id"],
+                                            origin_place_id=o_id, destination_place_id=d_id)
         except ValueError:  # e.g. an empty destination: leave that button off
             pass
     with st.container(horizontal=True):

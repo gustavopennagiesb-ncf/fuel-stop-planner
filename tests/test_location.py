@@ -88,6 +88,10 @@ def make_app(monkeypatch, *, mode, fix=None, session=None):
     return app, origins
 
 
+def find(app):
+    return next(b for b in app.button if b.label == "Find stations")
+
+
 def captions(app):
     return " ".join(c.value for c in app.caption)
 
@@ -101,8 +105,10 @@ def test_fixture_mode_explains_that_location_needs_google_mode(monkeypatch):
 def test_a_fix_becomes_the_route_origin(monkeypatch):
     fix = {"lat": 27.31234, "lng": -82.5, "accuracy": 35}
     app, origins = make_app(monkeypatch, mode="google", fix=fix)
-    assert origins and origins[-1] == (27.3123, -82.5)
     assert "Using your current location" in captions(app)
+    assert origins[-1] == "Sarasota, FL", "the location must wait for Find stations"
+    find(app).click().run()
+    assert origins[-1] == (27.3123, -82.5)
     assert not app.exception
 
 
@@ -115,9 +121,12 @@ def test_permission_denied_keeps_the_typed_address_and_says_why(monkeypatch):
 
 def test_clearing_returns_to_the_typed_address(monkeypatch):
     app, origins = make_app(monkeypatch, mode="google", session={"my_location": (27.3, -82.5)})
+    find(app).click().run()
     assert origins[-1] == (27.3, -82.5)
     next(b for b in app.button if "typed address" in b.label).click().run()
-    assert origins[-1] == "Sarasota, FL"
+    find(app).click().run()
+    # the typed trip was searched before, so the 10-minute cache answers without a new call
+    assert app.session_state["trip_applied"]["origin"]["label"] == "Sarasota, FL"
     assert "my_location" not in app.session_state or app.session_state["my_location"] is None
 
 

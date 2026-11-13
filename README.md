@@ -40,8 +40,9 @@ In `google` mode (day-1 check passed: Places returns U.S. fuel prices):
   warning, and any load error falls back to fixtures instead of crashing.
 - Where to stop answers first ("Fill up at ...", or "No detour pays off enough"), the cheapest price on the route (with what its detour does to the saving), with buttons that
   open the station and a "navigate via this station" route in Google Maps (free links, no key).
-  Origin, destination and corridor width are under "Your trip"; a paid search starts when you press
-  "Find stations".
+  Origin and destination are under "Your trip" with Google's address suggestions (type, then pick
+  an option, like Google Maps; plain text boxes if the browser key cannot use the Places API); a paid
+  search starts only when you press "Find stations".
 - "Use my current location" (under Origin, google mode only) asks the browser for your position
   and uses it as the route origin. The position stays in the session, is rounded to about 10 m,
   is never written to a file or a log, and only reaches Google in the Routes request made with

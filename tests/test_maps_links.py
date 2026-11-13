@@ -74,3 +74,15 @@ def test_hostile_text_is_encoded_not_interpreted():
 def test_overlong_urls_are_rejected():
     with pytest.raises(ValueError):
         ml.directions_url("x" * 3000, "B", via=(27.3, -82.5))
+
+
+def test_picked_places_add_origin_and_destination_place_ids():
+    q = query(ml.directions_url("Sarasota, FL, USA", "Orlando, FL, USA", via=(28.0, -82.0),
+                                origin_place_id="ChIJo", destination_place_id="ChIJd"))
+    assert q["origin_place_id"] == ["ChIJo"] and q["destination_place_id"] == ["ChIJd"]
+
+
+def test_place_ids_are_ignored_without_a_text_to_attach_to():
+    q = query(ml.directions_url((27.9, -82.4), "Orlando, FL", via=(28.0, -82.0),
+                                origin_place_id="ChIJo"))
+    assert "origin_place_id" not in q and "destination_place_id" not in q
