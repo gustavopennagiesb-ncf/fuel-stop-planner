@@ -255,7 +255,7 @@ tab_trip, tab_driver, tab_when, tab_sens, tab_eda, tab_ai, tab_help = st.tabs(
     [":material/local_gas_station: Where to stop", ":material/delivery_dining: Driver mode",
      ":material/calendar_month: When to fill up", ":material/calculate: Sensitivity",
      ":material/analytics: EDA", ":material/smart_toy: AI",
-     ":material/help: How to use"], on_change="rerun")
+     ":material/help: How to use"], key="main_tabs", on_change="rerun")
 
 
 def is_open(tab):
@@ -559,6 +559,9 @@ with tab_eda:
         eda_llm = AnthropicProvider()
         if st.button("Summarize the EDA"):
             res = ask("eda", eda_facts, eda_llm if eda_llm.available() else None)
+            if res.get("error"):
+                st.error(f"The LLM could not be reached, so this is the template: "
+                         f"{res['error']}", icon=":material/error:")
             st.write(res["text"])
             st.caption(f"Source: {res['source']}"
                        + (" (no ANTHROPIC_API_KEY: template, not an LLM)" if res["source"] == "template" and not eda_llm.available() else ""))
@@ -695,6 +698,9 @@ with tab_ai:
             llm_provider = None
         if st.button("Explain this recommendation"):
             res = explain(facts, llm_provider)
+            if res.get("error"):
+                st.error(f"The LLM could not be reached, so this is the template: "
+                         f"{res['error']}", icon=":material/error:")
             st.write(res["text"])
             st.success(f"Source: {res['source']} | traceable numbers on first try: "
                        f"{(res['traceable_first_try'] or 1.0):.0%} | attempts: {res['attempts']}"
@@ -703,6 +709,9 @@ with tab_ai:
         q = st.text_input("e.g. What if I buy 15 gallons? Why is the best station best?")
         if st.button("Ask") and q.strip():
             res = ask("qa", facts, llm_provider, question=q)
+            if res.get("error"):
+                st.error(f"The LLM could not be reached, so this is the template: "
+                         f"{res['error']}", icon=":material/error:")
             st.write(res["text"])
             st.caption(f"Source: {res['source']} | answers use only the facts below")
         with st.expander("Facts the LLM is allowed to use"):

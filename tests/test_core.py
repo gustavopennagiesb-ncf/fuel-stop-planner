@@ -239,3 +239,33 @@ def test_series_csv_roundtrip(tmp_path):
     assert list(back.columns) == ["florida", "us"] and len(back) == 60
     assert np.allclose(back["us"].dropna(), df["us"].dropna())
     assert load_cached_series(str(tmp_path / "none.csv")) is None
+
+
+# ---- a configured provider that fails must say so, not look like "no key" --------------
+class BrokenProvider:
+    """A real key that the API rejects: wrong key, no credits, network down."""
+    name = "anthropic"
+
+    def generate(self, facts):
+        raise RuntimeError("Error code: 401 - authentication_error")
+
+    def complete(self, prompt, max_tokens=300):
+        raise RuntimeError("Error code: 401 - authentication_error")
+
+
+def test_explain_reports_why_the_llm_failed_instead_of_hiding_it():
+    res = explain(FACTS, BrokenProvider())
+    assert res["source"] == "template" and res["fallback_used"]
+    assert "401" in res["error"]
+
+
+def test_ask_reports_why_the_llm_failed():
+    res = ask("eda", EDA_FACTS, BrokenProvider())
+    assert res["source"] == "template" and res["fallback_used"]
+    assert "401" in res["error"]
+
+
+def test_a_working_llm_reports_no_error():
+    assert explain(FACTS, HonestProvider())["error"] is None
+    assert ask("eda", EDA_FACTS, FakeLLM("Latest price is 3.45."))["error"] is None
+    assert ask("eda", EDA_FACTS, None)["error"] is None  # no provider is not an error
