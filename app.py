@@ -18,6 +18,7 @@ load_secrets()
 
 import config  # noqa: E402
 import driver
+import insight
 import location
 import places_autocomplete
 import maps_links
@@ -419,6 +420,45 @@ with tab_trip:
                                "fill-up costs if you do not leave the route.")
                 st.metric("Stations with a price", f"{len(ranked)}", border=True,
                           help="Stations inside your search corridor that have a price.")
+            lost = insight.regret(ranked)
+            if lost > 0:
+                st.caption(f"Choosing the cheapest station instead of the best one would cost "
+                           f"you ${lost:.2f} on this fill-up.")
+            else:
+                st.caption("The cheapest station is also the best one here, so choosing on "
+                           "price alone would cost you nothing.")
+            versus = insight.corridor_vs_state(
+                [s["price"] for s in priced if s["price"]],
+                series["florida"].dropna().iloc[-1])
+            if versus:
+                cents = abs(versus["diff_cents"])
+                gap = "" if cents == 0 or versus["verdict"].startswith("about") else f"{cents} cents "
+                st.caption(f"The median price on this route is ${versus['route_median']:.2f}/gal; "
+                           f"the latest weekly state price is ${versus['state_latest']:.2f}/gal. "
+                           f"The route is {gap}{versus['verdict']}.")
+            grid = insight.decision_grid(detoured, p_ref, mpg, speed)
+            rank_gap = insight.price_rank_gap(ranked)
+            flip = insight.flip_point(detoured, p_ref, gallons, mpg, speed)
+            with st.expander("Is the cheapest station the best one?",
+                             icon=":material/balance:"):
+                st.markdown(f"Price alone picked the wrong station in "
+                            f"**{grid['share'] * 100:.0f}%** of the {grid['total']} fill-up "
+                            f"sizes and values of time tried.")
+                if rank_gap == 1:
+                    st.markdown("Right now the cheapest station is also first in the ranking.")
+                else:
+                    st.markdown(f"Right now the cheapest station ranks **#{rank_gap}** once the "
+                                f"detour is priced.")
+                if flip is None:
+                    st.markdown(f"At {gallons:g} gallons the best station does not change "
+                                f"across these values of time.")
+                else:
+                    st.markdown(f"At {gallons:g} gallons the best station changes when your "
+                                f"time is worth ${flip:g}/h or more.")
+                g, v = insight.GALLONS_GRID, insight.VOT_GRID
+                st.caption(f"Tried {g[0]:g} to {g[-1]:g} gallons and ${v[0]:g} to ${v[-1]:g} an "
+                           f"hour. This describes this route, these stations, today: it is not "
+                           f"a forecast.")
 
     if ranked:
         with st.container(border=True):

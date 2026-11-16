@@ -301,3 +301,49 @@ def test_the_answer_is_not_repeated_in_the_metrics(monkeypatch):
     labels = {m.label for m in app.metric}
     assert "Price without detouring" in labels
     assert "Best option" not in labels and "You save (after the detour)" not in labels
+
+
+# --------------------------------------------------------------------- price is a bad proxy
+INSIGHT = "Is the cheapest station the best one?"
+
+
+def all_text(app):
+    return " ".join(c.value for c in app.caption) + " " + " ".join(m.value for m in app.markdown)
+
+
+def test_the_regret_line_says_what_choosing_on_price_costs(monkeypatch):
+    app, _ = make_app(monkeypatch, stations=crafted())
+    assert any("would cost you $" in c.value for c in app.caption)
+    assert not app.exception
+
+
+def test_the_corridor_is_compared_with_the_state_average(monkeypatch):
+    app, _ = make_app(monkeypatch, stations=crafted())
+    assert any("the state average" in c.value for c in app.caption)
+    assert not any("np.float64" in c.value for c in app.caption)
+
+
+def test_the_cheapest_question_expander_reports_a_share(monkeypatch):
+    app, _ = make_app(monkeypatch, stations=crafted())
+    found = [e for e in app.expander if e.label == INSIGHT]
+    assert len(found) == 1
+    text = " ".join(m.value for m in found[0].markdown) + " " + \
+        " ".join(c.value for c in found[0].caption)
+    assert "%" in text and "this route, these stations, today" in text
+
+
+def test_the_panel_agrees_with_the_headline(monkeypatch):
+    app, _ = make_app(monkeypatch, stations=crafted())
+    assert app.get("success")[0].proto.title == "Fill up at Near 1"
+    expander = [e for e in app.expander if e.label == INSIGHT][0]
+    text = " ".join(m.value for m in expander.markdown) + " " + \
+        " ".join(c.value for c in expander.caption)
+    assert "Fill up at" not in text
+
+
+def test_no_priced_station_shows_no_insight_panel(monkeypatch):
+    unpriced = [{"id": "x1", "name": "Unpriced", "lat": 27.5, "lng": -82.5, "price": None,
+                 "off_route_m": 100.0}]
+    app, _ = make_app(monkeypatch, stations=unpriced)
+    assert not [e for e in app.expander if e.label == INSIGHT]
+    assert not app.exception
