@@ -54,11 +54,18 @@ def test_price_rank_gap_of_nothing_is_none():
     assert insight.price_rank_gap([]) is None
 
 
-def test_a_price_tie_does_not_depend_on_list_order():
-    a, b = st("a", 3.40, 500.0), st("b", 3.40, 4000.0)
-    fwd, rev = rank([a, b]), rank([b, a])
-    assert insight.regret(fwd) == insight.regret(rev)
-    assert insight.price_rank_gap(fwd) == insight.price_rank_gap(rev)
+def test_a_net_benefit_tie_counts_as_the_cheapest_winning_in_both_list_orders():
+    """A (3.50, on the route) and B (3.40, 1464 m off) both net $2.00: no regret, rank 1,
+    and no grid cell at that setting is "misled"."""
+    a, b = st("a", 3.50, 0.0), st("b", 3.40, 1464.0)
+    for stations in ([a, b], [b, a]):
+        ranked = rank(stations)
+        assert ranked[0]["net_benefit"] == ranked[1]["net_benefit"] == 2.0
+        assert insight.regret(ranked) == 0.0
+        assert insight.price_rank_gap(ranked) == 1
+        grid = insight.decision_grid(stations, 3.70, 27.2, 45.0, gallons_values=(10.0,),
+                                     vot_values=(19.0,))
+        assert grid["misled"] == 0 and grid["cells"][0]["regret"] == 0.0
 
 
 def test_the_grid_counts_every_combination():
@@ -84,6 +91,15 @@ def test_time_value_decides_whether_a_far_cheap_station_wins():
     assert 0.0 < grid["share"] < 1.0
 
 
+def test_the_grid_reports_how_much_price_alone_costs_not_only_how_often():
+    grid = insight.decision_grid([NEAR, FAR_CHEAP], 3.70, 27.2, 45.0)
+    regrets = [c["regret"] for c in grid["cells"]]
+    assert all(r >= 0 for r in regrets)
+    assert grid["max_regret"] == max(regrets) > 0
+    assert min(regrets) <= grid["median_regret"] <= grid["max_regret"]
+    assert all((c["regret"] > 0) == (not c["cheapest_won"]) for c in grid["cells"])
+
+
 def test_the_grid_of_nothing_is_empty_not_a_crash():
     grid = insight.decision_grid([], 3.70, 27.2, 45.0)
     assert grid["total"] == 20 and grid["misled"] == 0 and grid["share"] == 0.0
@@ -91,7 +107,9 @@ def test_the_grid_of_nothing_is_empty_not_a_crash():
 
 def test_flip_point_finds_where_the_winner_changes():
     flip = insight.flip_point([NEAR, FAR_CHEAP], 3.70, 10.0, 27.2, 45.0)
-    assert flip in insight.VOT_GRID and flip > 0
+    assert flip == pytest.approx(3.65, abs=0.1)   # exact crossing, not the $10 grid step
+    assert rank([NEAR, FAR_CHEAP], vot=flip - 0.5)[0]["id"] == "far"
+    assert rank([NEAR, FAR_CHEAP], vot=flip + 0.5)[0]["id"] == "near"
 
 
 def test_flip_point_is_none_when_the_winner_never_changes():
