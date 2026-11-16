@@ -22,7 +22,8 @@ def fresh_cache():
     st.cache_data.clear()
 
 
-def make_app(monkeypatch, *, mode="fixture", stations=None, session=None, rename_best=None):
+def make_app(monkeypatch, *, mode="fixture", stations=None, session=None, rename_best=None,
+             series=None):
     """mode "google" fakes the paid calls with fixture data (ids look like Place ids) and records
     every (origin, destination) that reaches load_trip."""
     def offline(*args, **kwargs):
@@ -45,7 +46,8 @@ def make_app(monkeypatch, *, mode="fixture", stations=None, session=None, rename
         return trip
 
     monkeypatch.setattr(services, "load_trip", fake_trip)
-    monkeypatch.setattr(services, "load_series", lambda p: real_series("fixture"))
+    monkeypatch.setattr(services, "load_series",
+                        (lambda p: series) if series else (lambda p: real_series("fixture")))
     if mode == "google":
         monkeypatch.setattr(config, "PROVIDER", "google")
         monkeypatch.setattr(config, "GOOGLE_API_KEY", "test-key")
@@ -317,10 +319,41 @@ def test_the_regret_line_says_what_choosing_on_price_costs(monkeypatch):
     assert not app.exception
 
 
-def test_the_corridor_is_compared_with_the_state_average(monkeypatch):
+def versus_lines(app):
+    return [c.value for c in app.caption if "median price in your search corridor" in c.value]
+
+
+def test_the_corridor_is_compared_with_the_florida_average_when_both_are_synthetic(monkeypatch):
     app, _ = make_app(monkeypatch, stations=crafted())
-    assert any("the state average" in c.value for c in app.caption)
-    assert not any("np.float64" in c.value for c in app.caption)
+    lines = versus_lines(app)
+    assert len(lines) == 1
+    assert "Florida weekly average for the week of 20" in lines[0] and "(synthetic)" in lines[0]
+    assert "the state" not in lines[0] and "np.float64" not in lines[0]
+
+
+def test_real_stations_are_not_compared_with_a_synthetic_series(monkeypatch):
+    """Google mode, but the series is the synthetic one (no EIA key): not comparable, no line."""
+    app, _ = make_app(monkeypatch, mode="google", stations=crafted())
+    assert versus_lines(app) == []
+    assert not app.exception
+
+
+def test_real_stations_are_compared_with_a_real_series(monkeypatch):
+    import pandas as pd
+    real = pd.DataFrame({"florida": [3.50, 3.60], "us": [3.4, 3.5]},
+                        index=pd.to_datetime(["2026-11-02", "2026-11-09"]))
+    app, _ = make_app(monkeypatch, mode="google", stations=crafted(),
+                      series=(real, "EIA live"))
+    lines = versus_lines(app)
+    assert len(lines) == 1
+    assert "week of 2026-11-09 (EIA live)" in lines[0] and "$3.60/gal" in lines[0]
+
+
+def test_an_empty_series_shows_no_comparison_instead_of_crashing(monkeypatch):
+    import pandas as pd
+    empty = pd.DataFrame({"florida": [], "us": []}, index=pd.to_datetime([]))
+    app, _ = make_app(monkeypatch, stations=crafted(), series=(empty, "synthetic"))
+    assert versus_lines(app) == []
 
 
 def test_the_cheapest_question_expander_reports_a_share(monkeypatch):
@@ -329,7 +362,25 @@ def test_the_cheapest_question_expander_reports_a_share(monkeypatch):
     assert len(found) == 1
     text = " ".join(m.value for m in found[0].markdown) + " " + \
         " ".join(c.value for c in found[0].caption)
-    assert "%" in text and "this route, these stations, today" in text
+    assert "this route, these stations, today" in text
+    assert "**15 of 20 combinations (75%)**" in text
+    assert "ranks **#5**" in text
+    assert "changes when your time is worth about $5.48/h or more" in text
+    assert "a median of **$1.59** and at most **$5.43**" in text
+    assert len(found[0].dataframe) == 1  # the 4 x 5 grid of dollars lost
+
+
+def test_when_no_detour_pays_off_the_regret_line_does_not_mention_a_recommended_stop(monkeypatch):
+    def s(sid, price, off):
+        return {"id": sid, "name": sid, "lat": 27.5, "lng": -82.5, "price": price,
+                "off_route_m": off}
+    stations = [s("r1", 3.60, 0), s("r2", 3.60, 100), s("r3", 3.60, 200), s("r4", 3.603, 0),
+                s("far", 3.10, 8000)]
+    app, _ = make_app(monkeypatch, stations=stations)
+    assert not app.get("success")
+    caps = [c.value for c in app.caption]
+    assert any("no detour pays off enough" in c for c in caps)
+    assert not any("instead of the best one" in c for c in caps)
 
 
 def test_the_panel_and_the_regret_line_agree_when_price_misleads(monkeypatch):

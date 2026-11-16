@@ -421,29 +421,44 @@ with tab_trip:
                 st.metric("Stations with a price", f"{len(ranked)}", border=True,
                           help="Stations inside your search corridor that have a price.")
             lost = insight.regret(ranked)
-            if lost > 0:
+            if lost > 0 and rec["verdict"] == "go":
                 st.caption(f"Choosing the cheapest station instead of the best one would cost "
                            f"you ${lost:.2f} on this fill-up.")
+            elif lost > 0:  # "skip": no stop is being recommended, so do not compare with one
+                st.caption(f"The cheapest station ranks ${lost:.2f} below the best-ranked one, "
+                           f"but no detour pays off enough here, so the advice is to fill up "
+                           f"on your route.")
             else:
                 st.caption("The cheapest station is also the best one here, so choosing on "
                            "price alone would cost you nothing.")
-            versus = insight.corridor_vs_state(
-                [s["price"] for s in priced if s["price"]],
-                series["florida"].dropna().iloc[-1])
+            # Real station prices against a made-up series (or the reverse) are not comparable.
+            florida = series["florida"].dropna() if "florida" in series else []
+            same_kind = (trip["mode"] == "fixture") == (series_label == "synthetic")
+            versus = None
+            if same_kind and len(florida):
+                versus = insight.corridor_vs_state(
+                    [s["price"] for s in priced if s["price"]], float(florida.iloc[-1]))
             if versus:
                 cents = abs(versus["diff_cents"])
                 gap = "" if cents == 0 or versus["verdict"].startswith("about") else f"{cents} cents "
+                week = florida.index[-1]
+                week = week.strftime("%Y-%m-%d") if hasattr(week, "strftime") else str(week)
+                verdict = versus["verdict"].replace("state average", "Florida average")
                 st.caption(f"The median price in your search corridor is ${versus['route_median']:.2f}/gal; "
-                           f"the latest weekly state price is ${versus['state_latest']:.2f}/gal. "
-                           f"The route is {gap}{versus['verdict']}.")
+                           f"the Florida weekly average for the week of {week} ({series_label}) "
+                           f"is ${versus['state_latest']:.2f}/gal. "
+                           f"The route is {gap}{verdict}.")
             grid = insight.decision_grid(detoured, p_ref, mpg, speed)
             rank_gap = insight.price_rank_gap(ranked)
             flip = insight.flip_point(detoured, p_ref, gallons, mpg, speed)
             with st.expander("Is the cheapest station the best one?",
                              icon=":material/balance:"):
                 st.markdown(f"Price alone picked the wrong station in "
-                            f"**{grid['share'] * 100:.0f}%** of the {grid['total']} fill-up "
-                            f"sizes and values of time tried.")
+                            f"**{grid['misled']} of {grid['total']} combinations "
+                            f"({grid['share'] * 100:.0f}%)** of fill-up size and value of time.")
+                st.markdown(f"Across all {grid['total']} combinations, choosing on price "
+                            f"cost a median of **${grid['median_regret']:.2f}** and at most "
+                            f"**${grid['max_regret']:.2f}** per fill-up.")
                 if rank_gap == 1:
                     st.markdown("Right now the cheapest station is also first in the ranking.")
                 else:
@@ -454,7 +469,18 @@ with tab_trip:
                                 f"across these values of time.")
                 else:
                     st.markdown(f"At {gallons:g} gallons the best station changes when your "
-                                f"time is worth ${flip:g}/h or more.")
+                                f"time is worth about ${flip:.2f}/h or more.")
+                table = pd.DataFrame(
+                    {f"${v:g}/h": [next(c["regret"] for c in grid["cells"]
+                                        if c["gallons"] == g and c["vot"] == v)
+                                   for g in insight.GALLONS_GRID]
+                     for v in insight.VOT_GRID},
+                    index=[f"{g:g} gal" for g in insight.GALLONS_GRID])
+                st.caption("Dollars lost by choosing the cheapest station, by fill-up size (rows) "
+                           "and value of time (columns). $0.00 means price alone was right.")
+                st.dataframe(table.style.format("${:.2f}"), width="stretch",
+                             alt="Dollars lost by choosing the cheapest station, by fill-up size "
+                                 "and value of time")
                 g, v = insight.GALLONS_GRID, insight.VOT_GRID
                 st.caption(f"Tried {g[0]:g} to {g[-1]:g} gallons and ${v[0]:g} to ${v[-1]:g} an "
                            f"hour. This describes this route, these stations, today: it is not "
