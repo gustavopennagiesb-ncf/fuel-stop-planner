@@ -80,8 +80,10 @@ def _route_detour(trip, s, now):
     via = routes.compute_route(config.GOOGLE_API_KEY, trip["origin"], trip["destination"],
                                via=(s["lat"], s["lng"]))
     d = trip["direct"]
-    miles = (via["distanceMeters"] - d["distanceMeters"]) / 1609.344
-    minutes = (via["seconds"] - d["seconds"]) / 60.0
+    # The via route can come back shorter than the direct one (different road choice or traffic
+    # snapshot); a detour is never negative, and a negative one would turn fuel burned into fuel gained.
+    miles = max(0.0, (via["distanceMeters"] - d["distanceMeters"]) / 1609.344)
+    minutes = max(0.0, (via["seconds"] - d["seconds"]) / 60.0)
     _detour_memo[key] = (now, miles, minutes)
     return miles, minutes
 

@@ -269,3 +269,11 @@ def test_a_working_llm_reports_no_error():
     assert explain(FACTS, HonestProvider())["error"] is None
     assert ask("eda", EDA_FACTS, FakeLLM("Latest price is 3.45."))["error"] is None
     assert ask("eda", EDA_FACTS, None)["error"] is None  # no provider is not an error
+
+
+def test_net_benefit_never_exceeds_the_gross_saving():
+    import detour as d
+    stations = [{"id": str(i), "name": str(i), "price": p, "off_route_m": off, "lat": 0, "lng": 0}
+                for i, (p, off) in enumerate([(3.3, 0.0), (3.5, 50.0), (3.4, 4000.0)])]
+    for r in d.rank_stations(stations, 3.70, 10.0, 27.2, 19.0, 45.0):
+        assert r["net_benefit"] <= round(10.0 * (3.70 - r["price"]), 2) + 1e-9

@@ -82,3 +82,15 @@ def test_load_trip_google_without_key_falls_back_to_fixture(monkeypatch):
     monkeypatch.setattr(config, "GOOGLE_API_KEY", None)
     trip = services.load_trip("A", "B", provider="google")
     assert trip["mode"] == "fixture" and any("GOOGLE_API_KEY" in w for w in trip["warnings"])
+
+
+def test_a_via_route_shorter_than_the_direct_one_never_gives_a_negative_detour(monkeypatch):
+    """Routes can return a via route shorter in distance (or time) than the direct one."""
+    def shorter(api_key, origin, destination, via=None, **kw):
+        return {"distanceMeters": DIRECT["distanceMeters"] - 2284.0, "seconds": 6000 - 120,
+                "polyline": DIRECT["polyline"]}
+
+    monkeypatch.setattr(routes, "compute_route", shorter)
+    out = services.compute_detours(_trip([_station(0, 3.2)]))
+    assert out[0]["detour_source"] == "routes"
+    assert out[0]["extra_miles"] == 0.0 and out[0]["extra_minutes"] == 0.0
