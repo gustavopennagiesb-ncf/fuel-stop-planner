@@ -71,6 +71,10 @@ In `google` mode (day-1 check passed: Places returns U.S. fuel prices):
   Origin and destination are under "Your trip" with Google's address suggestions (type, then pick
   an option, like Google Maps; plain text boxes if the browser key cannot use the Places API); a paid
   search starts only when you press "Find stations".
+- Under the recommendation, "Is the cheapest station the best one?" shows what choosing on price
+  alone costs (regret), how that changes across fill sizes and values of time, and how the
+  route's prices compare with the latest weekly state average. It re-ranks the same stations, so it
+  makes no extra API calls.
 - "Use my current location" (under Origin, google mode only) asks the browser for your position
   and uses it as the route origin. The position stays in the session, is rounded to about 10 m,
   is never written to a file or a log, and only reaches Google in the Routes request made with
