@@ -433,7 +433,7 @@ with tab_trip:
             if versus:
                 cents = abs(versus["diff_cents"])
                 gap = "" if cents == 0 or versus["verdict"].startswith("about") else f"{cents} cents "
-                st.caption(f"The median price on this route is ${versus['route_median']:.2f}/gal; "
+                st.caption(f"The median price in your search corridor is ${versus['route_median']:.2f}/gal; "
                            f"the latest weekly state price is ${versus['state_latest']:.2f}/gal. "
                            f"The route is {gap}{versus['verdict']}.")
             grid = insight.decision_grid(detoured, p_ref, mpg, speed)

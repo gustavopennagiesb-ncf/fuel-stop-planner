@@ -332,13 +332,21 @@ def test_the_cheapest_question_expander_reports_a_share(monkeypatch):
     assert "%" in text and "this route, these stations, today" in text
 
 
-def test_the_panel_agrees_with_the_headline(monkeypatch):
+def test_the_panel_and_the_regret_line_agree_when_price_misleads(monkeypatch):
     app, _ = make_app(monkeypatch, stations=crafted())
-    assert app.get("success")[0].proto.title == "Fill up at Near 1"
     expander = [e for e in app.expander if e.label == INSIGHT][0]
-    text = " ".join(m.value for m in expander.markdown) + " " + \
-        " ".join(c.value for c in expander.caption)
-    assert "Fill up at" not in text
+    text = " ".join(m.value for m in expander.markdown)
+    assert "ranks **#" in text and "ranks **#1**" not in text
+    assert any("would cost you $" in c.value for c in app.caption)
+    assert not any("would cost you nothing" in c.value for c in app.caption)
+
+
+def test_when_the_cheapest_is_also_the_best_the_insight_says_it_costs_nothing(monkeypatch):
+    app, _ = make_app(monkeypatch, stations=[s for s in crafted() if s["id"] != "far"])
+    assert any("would cost you nothing" in c.value for c in app.caption)
+    assert not any("would cost you $" in c.value for c in app.caption)
+    expander = [e for e in app.expander if e.label == INSIGHT][0]
+    assert "also first in the ranking" in " ".join(m.value for m in expander.markdown)
 
 
 def test_no_priced_station_shows_no_insight_panel(monkeypatch):
