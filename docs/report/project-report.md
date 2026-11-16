@@ -122,6 +122,18 @@ station is not merely worse, it is a net loss. The app shows both, so the user c
 trade-off instead of being told to trust a ranking. (Dollar figures are rounded; the parts are
 computed from unrounded miles and minutes.)
 
+Two things follow, and both are worth stating plainly. First, **the gain per fill-up is small**:
+$0.79 on ten gallons is not money that changes anyone's week, and the honest description of what
+the app does is that it stops you losing $0.68, not that it earns you $0.79. The value is in
+avoiding the bad detour, not in finding the good one. Second, **finding the station is not free**:
+at Google's published rates a fresh search costs about $0.32 (up to six Places calls with fuel
+prices at $0.04 each, seven Routes calls at $0.01, one map load at $0.007), which is roughly 40%
+of what the better choice saves on that fill. Both figures are specific to this run and to a
+ten-gallon fill; the gross saving scales with tank size, price dispersion and the value the driver
+puts on their time, and the API cost falls inside Google's free monthly tiers at the volumes a
+single user generates. But the order of magnitude is the point: as measured here, this is a
+decision-quality tool, not a money-making one.
+
 ![Map](../screenshots/02-map.jpg)
 
 ### 4.3 Driver mode: range before the reserve
