@@ -9,11 +9,15 @@ the value of time at which the winner changes (`flip_point`).
 The result describes one route's stations at one moment, not a general law: change
 the route, the prices or the hour and the numbers change with them.
 """
+import math
+from statistics import median
+
 import detour
 import recommend
 
 GALLONS_GRID = (5.0, 10.0, 15.0, 20.0)
 VOT_GRID = (0.0, 10.0, 20.0, 30.0, 40.0)
+SAME_AS_STATE_CENTS = 5
 
 
 def regret(ranked):
@@ -59,3 +63,28 @@ def flip_point(stations, p_ref, gallons, mpg, speed_mph, vot_values=VOT_GRID):
         elif winner != first:
             return vot
     return None
+
+
+def _usable(price):
+    return isinstance(price, (int, float)) and not isinstance(price, bool) and math.isfinite(price)
+
+
+def corridor_vs_state(route_prices, state_latest):
+    """Median price of the stations on the route against the latest weekly state price.
+
+    `diff_cents` is negative when the corridor is cheaper. Within 5 cents counts as
+    "about" the state average. None when either side has no usable (finite) price.
+    """
+    prices = [p for p in route_prices if _usable(p)]
+    if not prices or not _usable(state_latest):
+        return None
+    route_median = median(prices)
+    diff_cents = round((route_median - state_latest) * 100)
+    if abs(diff_cents) <= SAME_AS_STATE_CENTS:
+        verdict = "about the state average"
+    elif diff_cents < 0:
+        verdict = "cheaper than the state average"
+    else:
+        verdict = "dearer than the state average"
+    return {"route_median": route_median, "state_latest": state_latest,
+            "diff_cents": diff_cents, "verdict": verdict}

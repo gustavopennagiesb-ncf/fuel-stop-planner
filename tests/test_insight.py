@@ -96,3 +96,27 @@ def test_flip_point_finds_where_the_winner_changes():
 
 def test_flip_point_is_none_when_the_winner_never_changes():
     assert insight.flip_point([NEAR], 3.70, 10.0, 27.2, 45.0) is None
+
+
+def test_a_cheap_corridor_is_reported_in_cents():
+    out = insight.corridor_vs_state([3.55, 3.60, 3.65], 3.73)
+    assert out["route_median"] == 3.60
+    assert out["diff_cents"] == -13
+    assert out["verdict"] == "cheaper than the state average"
+
+
+def test_a_dear_corridor():
+    out = insight.corridor_vs_state([3.90, 3.95], 3.73)
+    assert out["diff_cents"] > 0
+    assert out["verdict"] == "dearer than the state average"
+
+
+def test_within_five_cents_is_about_the_same():
+    assert insight.corridor_vs_state([3.76], 3.73)["verdict"] == "about the state average"
+    assert insight.corridor_vs_state([3.79], 3.73)["verdict"] == "dearer than the state average"
+
+
+def test_missing_prices_give_nothing_to_show():
+    assert insight.corridor_vs_state([], 3.73) is None
+    assert insight.corridor_vs_state([3.6], None) is None
+    assert insight.corridor_vs_state([3.6], float("nan")) is None
