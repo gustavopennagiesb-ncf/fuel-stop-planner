@@ -4,3 +4,10 @@ __pycache__/
 .pytest_cache/
 *.pyc
 .venv/
+
+# agent tooling and research notes, not part of the deliverable
+.claude/
+.agents/
+.superpowers/
+reports/
+research_notes/

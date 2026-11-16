@@ -1,7 +1,12 @@
-streamlit>=1.56
-pandas
-numpy
-requests
-plotly
-anthropic
-pytest
+# Pinned to the versions this project was built and tested on, so a fresh clone behaves the
+# same. Needs Python 3.11 or newer (the tests read the theme with tomllib, added in 3.11);
+# built and tested on Python 3.12.
+streamlit==1.67.0
+pandas==3.1.1
+numpy==2.5.4
+requests==2.34.2
+plotly==7.1.0
+anthropic==2.7.0
+
+# test only
+pytest==9.2.0

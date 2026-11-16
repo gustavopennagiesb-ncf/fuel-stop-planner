@@ -8,19 +8,47 @@ with an **LLM explanation whose numbers are checked against the calculation**.
 Not financial advice: historical data and arithmetic only.
 
 ## Data sources
-| Need | Source | Status |
+
+Every API below returns **JSON** over HTTPS. The retrieval and parsing live in `providers/`
+(one module per API, no UI code); `services.py` chooses between them with `PROVIDER`.
+
+| Need | Source | Endpoint | Key | What is read |
+|---|---|---|---|---|
+| Weekly regular gasoline, Florida and U.S. | EIA Open Data API v2 | `GET /v2/petroleum/pri/gnd/data/` | free key | `response.total`, `response.data[]` with `period` and `value` |
+| Station prices | Google Places API (New) | `POST /v1/places:searchNearby` | server key | `places[]` with `id`, `displayName.text`, `location.latitude/longitude`, `fuelOptions.fuelPrices[]` |
+| Route and detour | Google Routes API v2 | `POST /directions/v2:computeRoutes` | server key | `routes[0]` with `distanceMeters`, `duration`, `polyline.encodedPolyline` |
+| Car mpg | fueleconomy.gov web services (EPA/DOE) | `GET /ws/rest/vehicle/...` | none | `menuItem[]` cascade, then `city08`, `comb08`, `highway08`, `fuelType` |
+| Plain-language text | Anthropic Messages API | `POST /v1/messages` | optional key | the model's text, with every number checked against the computed facts |
+
+Both Google calls send a **field mask**, so only the fields above are requested and billed
+(`providers/places.py` and `providers/routes.py`).
+
+### Shape of the data inside the app
+
+| Structure | Where | Columns / fields |
 |---|---|---|
-| Weekly regular gasoline, Florida and U.S. | EIA Open Data API v2 (`petroleum/pri/gnd`), free key | route/codes from secondary sources, verify day 1 |
-| Station prices | Google Places API (New) `fuelOptions` | US coverage UNVERIFIED, verify day 1 |
-| Route and detour | Google Routes API v2 (`TRAFFIC_AWARE`) | request shape from docs, not yet run |
-| Car mpg | fueleconomy.gov web services (EPA/DOE), free, no key | city / combined / highway label values; electric cars report MPGe, so they are flagged |
-| LLM | Anthropic API (or template fallback) | optional key |
+| `pandas.DataFrame`, weekly `DatetimeIndex` | the EIA series | `florida`, `us` (float, $/gal) |
+| `list[dict]` | one station | `id`, `name`, `lat`, `lng`, `price`, `price_updated`, `synthetic` |
+| `list[dict]` | a ranked station (adds) | `extra_miles`, `extra_minutes`, `net_benefit`, `detour_source` |
+| `list[tuple]` | the route | `(lat, lng)` points decoded from the polyline in `geo.py` |
+
+### Stored data
+
+`data/eia_weekly.csv` (in this repository) is the weekly EIA series: three columns, `period`,
+`florida`, `us`. It is public U.S. government data. The app refreshes it when the API answers
+and falls back to it when the API is down. Google Places and Routes responses are **never**
+written to disk: Google's terms allow storing only place IDs.
 
 ## Run without any key (fixture mode, synthetic data)
+
+Needs **Python 3.11 or newer** (built and tested on 3.12; the tests read the theme with
+`tomllib`, which arrived in 3.11). Dependency versions are pinned in `requirements.txt`.
+
 ```bash
-pip install -r requirements.txt
-streamlit run app.py        # PROVIDER=fixture by default
-pytest
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+.venv/bin/streamlit run app.py        # PROVIDER=fixture by default
+.venv/bin/python -m pytest -q         # 269 tests, no network and no keys
 ```
 
 ## Run with real data
@@ -70,7 +98,10 @@ factors are constants in `driver.py`.
 - Places/Routes content must be shown on a Google map: `gmap.py` builds that map and `app.py`
   renders it with `st.iframe`. Without `GOOGLE_MAPS_JS_KEY` the stations are not drawn and the
   app says so.
-- Keys come from environment variables or `st.secrets`, never from the repo.
+- Keys come from environment variables, a local `.env`, or Streamlit secrets
+  (`envfile.load_dotenv()` and `envfile.load_secrets()` run before `config.py` reads the
+  environment, so the same code works locally and on Streamlit Cloud). A real shell
+  variable wins over `.env`, which wins over secrets. Nothing is read from the repo.
 
 ## Day-1 checklist (run on your own machine)
 1. `EIA_API_KEY`: call `/v2/petroleum/pri/gnd/facet/duoarea` and confirm `SFL`, `NUS`, `YMIA`.
@@ -86,6 +117,3 @@ call) and prints PASS / WARN / FAIL without ever printing a key.
 ## Team
 Author: Gustavo Penna (individual project).
 
-## Data storage
-Live EIA series are saved to `data/eia_weekly.csv` (public U.S. government data, OK to commit) and
-reused if the API is unreachable. Google Places/Routes responses are never stored.

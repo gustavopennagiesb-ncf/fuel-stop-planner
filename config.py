@@ -1,5 +1,6 @@
-"""Runtime configuration. Keys come from environment variables or Streamlit secrets and are
-never committed. PROVIDER selects the data path: google | fallback | fixture."""
+"""Runtime configuration: plain environment variables, never committed. `app.py` calls
+`envfile.load_dotenv()` and `envfile.load_secrets()` first, so a local `.env` and Streamlit
+Cloud secrets both end up here. PROVIDER selects the data path: google | fallback | fixture."""
 import os
 
 PROVIDER = os.environ.get("PROVIDER", "fixture").lower()

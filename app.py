@@ -9,9 +9,12 @@ import plotly.graph_objects as go
 import requests
 import streamlit as st
 
-from envfile import load_dotenv
+from envfile import load_dotenv, load_secrets
 
-load_dotenv()  # before `import config`, which reads the environment at import time
+# Both run before `import config`, which reads the environment at import time. A real shell
+# variable wins over .env, which wins over Streamlit secrets (how keys arrive on Streamlit Cloud).
+load_dotenv()
+load_secrets()
 
 import config  # noqa: E402
 import driver
