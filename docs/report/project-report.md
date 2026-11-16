@@ -90,6 +90,8 @@ finding, and it is what justifies putting the effort into the "where" half inste
 
 ![Where to stop](../screenshots/01-where-to-stop.jpg)
 
+*The screenshot shows the same tab from an earlier fetch that day. Live prices move between fetches, so its figures differ slightly from the measured run described below.*
+
 For each station found along the route corridor, the app computes the **net benefit**:
 
 ```
@@ -105,7 +107,7 @@ which was used for each row.
 
 How often does price alone pick the wrong station? The app measures it. The same stations are
 re-ranked across a grid of fill sizes (5 to 20 gallons) and values of time ($0 to $40/h), which
-costs nothing because the ranking is pure math and makes no new API call. On the run above
+costs nothing because the ranking is pure math and makes no new API call. In the measured run
 (Sarasota to Orlando, 3 km corridor, 10 gallons, 27.2 mpg, $19/h, 45 mph; 85 stations found, 58
 with a price; run on 2026-11-15), price alone picked the wrong station in **13 of the 20
 combinations (65%)**. That is this route, these stations, on that date, not a general law. At 10
