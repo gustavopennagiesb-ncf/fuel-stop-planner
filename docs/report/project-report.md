@@ -90,7 +90,7 @@ finding, and it is what justifies putting the effort into the "where" half inste
 
 ![Where to stop](../screenshots/01-where-to-stop.jpg)
 
-*The screenshot shows the same tab from an earlier fetch that day. Live prices move between fetches, so its figures differ slightly from the measured run described below.*
+*The screenshot shows the same tab from an earlier fetch. Its station prices match the measured run below, but the detour and the reference price had moved, so its savings are quite different. Repeated runs give different figures because live prices and Routes detours move between fetches; that variability is a real property of the data.*
 
 For each station found along the route corridor, the app computes the **net benefit**:
 
@@ -108,17 +108,19 @@ which was used for each row.
 How often does price alone pick the wrong station? The app measures it. The same stations are
 re-ranked across a grid of fill sizes (5 to 20 gallons) and values of time ($0 to $40/h), which
 costs nothing because the ranking is pure math and makes no new API call. In the measured run
-(Sarasota to Orlando, 3 km corridor, 10 gallons, 27.2 mpg, $19/h, 45 mph; 85 stations found, 58
-with a price; run on 2026-11-15), price alone picked the wrong station in **13 of the 20
-combinations (65%)**. That is this route, these stations, on that date, not a general law. At 10
-gallons the best station changes once your time is worth **$10/h or more**.
+(2026-11-16; Sarasota to Orlando, 3 km corridor, 10 gallons, 27.2 mpg, $19/h, 45 mph; 85 stations
+found in the corridor), price alone picked the wrong station in **15 of the 20 combinations
+(75%)**. That is this route, these stations, on that date, not a general law.
 
-The run itself shows how it happens. The **cheapest** gas on the route was a Chevron at
-**$3.28/gal**, $0.28 below the route price of **$3.56/gal**. But after fuel and time it saves only
-**$1.95**. The **recommended** stop was a different Chevron at **$3.36/gal**, 8 cents more
-expensive per gallon, which saves **$2.67**. Choosing on price alone would have cost **$0.72**
-(the "regret"), and the cheapest station ranks #2. The app shows both, so the user can see the
-trade-off instead of being told to trust a ranking.
+The run itself shows how it happens. The reference price on the route was **$3.54/gal**. The
+**recommended** stop was a Chevron at **$3.36/gal**, a detour of **0.4 miles / 3 minutes**, with a
+net saving of **$0.79** (gross $1.80, minus $0.05 of fuel, minus $0.95 of time). The **cheapest**
+gas on the route was a different Chevron at **$3.28/gal**, but its detour is **1.89 miles / 9.7
+minutes**, so its net is **-$0.68**: stopping there *loses* money, and it ranks **#30** of the
+priced stations. Choosing on price alone would have cost **$1.47** (the "regret"). The cheapest
+station is not merely worse, it is a net loss. The app shows both, so the user can see the
+trade-off instead of being told to trust a ranking. (Dollar figures are rounded; the parts are
+computed from unrounded miles and minutes.)
 
 ![Map](../screenshots/02-map.jpg)
 
@@ -174,7 +176,9 @@ minutes; and the address autocomplete manages its own billing session.
 - The forecasting result is negative: no method tested beats the naive forecast at one week.
 - Driver mode's defaults are assumptions, not measurements. They are labelled as such throughout.
 - The detour for most stations is an out-and-back approximation; only the cheapest candidates get
-  an exact route, to cap API cost.
+  an exact route, to cap API cost. As a result the measured share of wrong picks mixes two detour
+  methods: exact Routes detours for the cheapest handful of priced stations, an out-and-back
+  estimate for the rest.
 - Station prices come from Google and can be stale; every price is editable in the interface.
 - Fuel price data is Florida and U.S. only.
 
