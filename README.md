@@ -114,6 +114,11 @@ factors are constants in `driver.py`.
 `python scripts/day1_check.py` runs the checks above against the live APIs (1 Places call, 1 Routes
 call) and prints PASS / WARN / FAIL without ever printing a key.
 
+## Report
+
+`docs/report/project-report.md` is the project report (objectives, method, results, screenshots).
+Screenshots of the live app are in `docs/screenshots/`.
+
 ## Team
 Author: Gustavo Penna (individual project).
 
