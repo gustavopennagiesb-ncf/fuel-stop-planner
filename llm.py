@@ -9,7 +9,7 @@ import re
 
 NUM = re.compile(r"-?\d+(?:[.,]\d+)?")
 MODEL = os.environ.get("LLM_MODEL", "claude-haiku-5-5")
-GROQ_MODEL = os.environ.get("GROQ_MODEL", "llama-3.1-8b-instant")
+GROQ_MODEL = os.environ.get("GROQ_MODEL", "qwen/qwen3.8-27b")
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 
 

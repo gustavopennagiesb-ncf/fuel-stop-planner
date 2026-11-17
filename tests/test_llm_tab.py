@@ -26,6 +26,8 @@ EDA_TAB = ":material/analytics: EDA"
 def run_app(monkeypatch, *, key_works, open_tab=None):
     monkeypatch.setattr(fueleconomy, "_get",
                         lambda *a, **k: (_ for _ in ()).throw(requests.ConnectionError("x")))
+    # Disable Groq so _llm_provider() falls through to Anthropic (the subject under test).
+    monkeypatch.setattr(llm.GroqProvider, "available", lambda self: False)
     monkeypatch.setattr(llm.AnthropicProvider, "available", lambda self: True)
     if key_works:
         monkeypatch.setattr(llm.AnthropicProvider, "generate",

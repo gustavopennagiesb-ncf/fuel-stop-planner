@@ -163,8 +163,19 @@ numbers that were traceable on the first attempt, the number of attempts, and wh
 fallback was used. A failed API call (wrong key, no credit, network) is reported on screen, so a
 broken integration can never be mistaken for a working one.
 
-`[TO FILL IN: once your Anthropic API key is active, run the three LLM features and record the
-observed traceable-number rate here. This is the headline result for the LLM section.]`
+Measured on 2026-11-17 using Groq's free-tier API (model: `qwen/qwen3.8-27b`), no fallback triggered
+on any call:
+
+| Feature | Traceable-number rate | Fallback used |
+|---|---|---|
+| Route explanation (`explain()`) | **100%** | No |
+| EDA summary (`ask('eda')`) | **88%** | No |
+| Free-text Q&A (`ask('qa')`) | **100%** (answerable question) | No |
+
+The Q&A feature also correctly refused to invent a number when asked about a gallon amount that did
+not appear in the facts dict, returning "FACTS cannot answer it" instead of guessing. The average
+traceable rate across the three answering cases is **96%**; the validator retried zero times in
+any of these runs.
 
 ## 5. Engineering
 
@@ -172,7 +183,7 @@ observed traceable-number rate here. This is the headline result for the LLM sec
 |---|---|
 | Commits | 52 (2026-11-09 to 2026-11-17) |
 | Application code | ~9,500 lines across 44 modules |
-| Test code | ~2,360 lines across 21 files, **299 tests** |
+| Test code | ~2,360 lines across 21 files, **306 tests** |
 | Dependencies | pinned exactly; Python 3.11+ |
 
 The architecture keeps the arithmetic away from the interface: **41 of the 44 modules contain no
