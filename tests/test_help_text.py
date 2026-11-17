@@ -95,12 +95,14 @@ def test_the_sidebar_header_names_what_the_sidebar_holds(at):
 
 
 def test_the_app_opens_on_the_answer_and_keeps_the_manual_last(at):
-    nav = at.sidebar.radio[0]
-    assert nav.options[0].endswith("Where to stop")
-    assert nav.options[1].endswith("When to fill up")
-    assert nav.options[-1].endswith("How to use")
+    buttons = at.sidebar.button
+    labels = [b.label for b in buttons]
+    assert labels[0] == "Where to stop"
+    assert labels[1] == "When to fill up"
+    assert labels[-1] == "How to use"
 
 
 def test_every_tab_label_carries_an_icon_so_tabs_stay_scannable(at):
-    nav = at.sidebar.radio[0]
-    assert all(opt.startswith(":material/") for opt in nav.options)
+    buttons = at.sidebar.button
+    for b in buttons:
+        assert b.icon and b.icon.startswith(":material/")

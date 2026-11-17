@@ -274,8 +274,48 @@ _NAV = [
     ":material/help: How to use",
 ]
 
+
+def _nav_click(item):
+    st.session_state["main_tabs"] = item
+
+
 with st.sidebar:
-    st.radio("Navigate to", _NAV, key="main_tabs", label_visibility="collapsed")
+    _current_nav = st.session_state.get("main_tabs", _NAV[0])
+    _active_key = "_nav_" + _current_nav.split(": ", 1)[1].replace(" ", "_")
+    st.html(f"""<style>
+.st-key-nav_container button {{
+    border: 1px solid transparent !important;
+    background: transparent !important;
+    color: var(--text-color) !important;
+    font-weight: 500 !important;
+}}
+.st-key-nav_container button:hover {{
+    background: rgba(30,58,138,0.1) !important;
+    color: #1E3A8A !important;
+    border-color: transparent !important;
+}}
+.st-key-{_active_key} button {{
+    background: #1E3A8A !important;
+    color: white !important;
+    border-color: #1E3A8A !important;
+}}
+.st-key-{_active_key} button:hover {{
+    background: #1d4ed8 !important;
+    border-color: #1d4ed8 !important;
+}}
+</style>""")
+    with st.container(key="nav_container"):
+        for _item in _NAV:
+            _icon_part, _label_part = _item.split(" ", 1)
+            st.button(
+                _label_part,
+                icon=_icon_part,
+                key=f"_nav_{_label_part.replace(' ', '_')}",
+                width="stretch",
+                type="secondary",
+                on_click=_nav_click,
+                args=(_item,),
+            )
     st.divider()
     st.header("Fill-up and time")
     st.caption("Drag a slider or type the exact value in the box beside it.")
