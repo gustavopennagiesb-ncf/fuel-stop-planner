@@ -418,8 +418,18 @@ with tab_trip:
                 st.metric("Price without detouring", f"${p_ref:.2f}/gal", border=True,
                           help="The median price of stations right on your route: what the same "
                                "fill-up costs if you do not leave the route.")
-                st.metric("Stations with a price", f"{len(ranked)}", border=True,
-                          help="Stations inside your search corridor that have a price.")
+                n_total = len(stations)
+                n_priced = sum(1 for s in priced if s["price"] is not None)
+                st.metric("Stations with a price",
+                          f"{n_priced} of {n_total}" if n_total > n_priced else f"{n_priced}",
+                          border=True,
+                          help="Stations inside your search corridor that returned a price. "
+                               "Stations without a price are shown in the table above — "
+                               "you can enter their price manually and the ranking updates.")
+                if n_total > n_priced:
+                    st.caption(f"{n_total - n_priced} station{'s' if n_total-n_priced>1 else ''} "
+                               f"had no price listed. Enter prices in the table above to include "
+                               f"them in the ranking.")
             lost = insight.regret(ranked)
             if lost > 0 and rec["verdict"] == "go":
                 st.caption(f"Choosing the cheapest station instead of the best one would cost "
