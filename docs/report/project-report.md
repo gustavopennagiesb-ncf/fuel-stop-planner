@@ -170,12 +170,12 @@ observed traceable-number rate here. This is the headline result for the LLM sec
 
 | | |
 |---|---|
-| Commits | 37 (2026-11-09 to 2026-11-15) |
-| Application code | 2,161 lines across 22 modules |
-| Test code | 2,093 lines across 20 files, **269 tests** |
+| Commits | 52 (2026-11-09 to 2026-11-17) |
+| Application code | ~9,500 lines across 44 modules |
+| Test code | ~2,360 lines across 21 files, **299 tests** |
 | Dependencies | pinned exactly; Python 3.11+ |
 
-The architecture keeps the arithmetic away from the interface: **18 of the 22 modules contain no
+The architecture keeps the arithmetic away from the interface: **41 of the 44 modules contain no
 Streamlit code at all**, which is why the test suite runs in about a minute without a browser,
 a network connection, or a single API key. UI behaviour is covered with Streamlit's `AppTest`.
 
