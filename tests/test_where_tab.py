@@ -33,7 +33,8 @@ def make_app(monkeypatch, *, mode="fixture", stations=None, session=None, rename
     calls = []
     real_trip, real_series = services.load_trip, services.load_series
 
-    def fake_trip(origin=None, destination=None, buffer_m=3000, provider=None):
+    def fake_trip(origin=None, destination=None, buffer_m=3000, provider=None,
+                  fuel_type="REGULAR_UNLEADED"):
         calls.append((origin, destination, buffer_m))
         trip = real_trip(None, None, buffer_m, provider="fixture")
         if stations is not None:

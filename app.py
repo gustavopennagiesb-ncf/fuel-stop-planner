@@ -176,6 +176,10 @@ with col_car, st.container(border=True, height="stretch"):
     mpg = slider_with_number("Fuel economy (mpg)", 10.0, 60.0, DEFAULTS["mpg"], 0.5, "mpg")
     tank = st.number_input("Tank size (gallons)", 5.0, 40.0, 13.0, 0.5, key="tank")
     st.caption(f"About {tank * mpg:.0f} miles on a full tank at this mpg.")
+    fuel_grade = st.segmented_control(
+        "Fuel grade", ["Regular", "Midgrade", "Premium", "Diesel"],
+        default="Regular", key="fuel_grade",
+        help="Filters station prices to this grade. Regular = 87 octane.")
 with col_trip, st.container(border=True, height="stretch"):
     st.markdown("**Your trip**")
     corridor_help = ("How far from your route a station can be and still be listed. For example, "
@@ -253,17 +257,26 @@ def cached_series(p):
     return load_series(p)
 
 
+_FUEL_TYPE = {
+    "Regular": "REGULAR_UNLEADED",
+    "Midgrade": "MIDGRADE",
+    "Premium": "PREMIUM",
+    "Diesel": "DIESEL",
+}
+
+
 @st.cache_data(show_spinner="Finding stations...", ttl=600)
-def cached_trip(p, o, d, buf):
-    return load_trip(o, d, buf, provider=p)
+def cached_trip(p, o, d, buf, ft="REGULAR_UNLEADED"):
+    return load_trip(o, d, buf, provider=p, fuel_type=ft)
 
 
 series, series_label = cached_series(provider)
+_ft = _FUEL_TYPE.get(st.session_state.get("fuel_grade", "Regular"), "REGULAR_UNLEADED")
 try:
-    trip = cached_trip(provider, origin, destination, buffer_km * 1000)
+    trip = cached_trip(provider, origin, destination, buffer_km * 1000, _ft)
 except Exception as e:  # network or key problems should not crash the demo
     st.error(f"Could not load the trip ({e}). Falling back to fixture data.")
-    trip = cached_trip("fixture", None, None, buffer_km * 1000)
+    trip = cached_trip("fixture", None, None, buffer_km * 1000, _ft)
 
 for w in trip["warnings"]:
     st.info(w)

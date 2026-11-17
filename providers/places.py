@@ -36,19 +36,20 @@ def parse_places(payload, fuel_type="REGULAR_UNLEADED"):
     return out
 
 
-def search_nearby(api_key, lat, lng, radius_m=5000, session=None):
+def search_nearby(api_key, lat, lng, radius_m=5000, fuel_type="REGULAR_UNLEADED", session=None):
     s = session or requests
     r = s.post(URL, json=build_body(lat, lng, radius_m),
                headers={"X-Goog-Api-Key": api_key, "X-Goog-FieldMask": FIELD_MASK}, timeout=30)
     r.raise_for_status()
-    return parse_places(r.json())
+    return parse_places(r.json(), fuel_type)
 
 
-def search_along(api_key, sample_pts, radius_m=4000, max_calls=6, session=None):
+def search_along(api_key, sample_pts, radius_m=4000, max_calls=6,
+                 fuel_type="REGULAR_UNLEADED", session=None):
     """Query Places around up to max_calls sample points; de-duplicate by place id."""
     seen = {}
     step = max(1, len(sample_pts) // max_calls)
     for lat, lng in sample_pts[::step][:max_calls]:
-        for st in search_nearby(api_key, lat, lng, radius_m, session):
+        for st in search_nearby(api_key, lat, lng, radius_m, fuel_type, session):
             seen[st["id"]] = st
     return list(seen.values())

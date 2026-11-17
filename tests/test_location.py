@@ -73,7 +73,8 @@ def make_app(monkeypatch, *, mode, fix=None, session=None):
         monkeypatch.setattr(config, "EIA_API_KEY", "test-key")
         real_trip, real_series = services.load_trip, services.load_series
 
-        def fake_trip(origin=None, destination=None, buffer_m=3000, provider=None):
+        def fake_trip(origin=None, destination=None, buffer_m=3000, provider=None,
+                      fuel_type="REGULAR_UNLEADED"):
             origins.append(origin)
             return real_trip(None, None, buffer_m, provider="fixture")
 

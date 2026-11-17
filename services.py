@@ -38,7 +38,8 @@ def load_cached_series(path=CACHE_PATH):
     return pd.read_csv(path, index_col="period", parse_dates=True)
 
 
-def load_trip(origin=None, destination=None, buffer_m=3000, provider: str = None):
+def load_trip(origin=None, destination=None, buffer_m=3000, provider: str = None,
+              fuel_type: str = "REGULAR_UNLEADED"):
     """Return {'path', 'polyline', 'stations', 'mode', 'warnings'}.
 
     fixture: synthetic route and stations. google: Routes for the path, Places along it
@@ -56,7 +57,7 @@ def load_trip(origin=None, destination=None, buffer_m=3000, provider: str = None
     direct = routes.compute_route(config.GOOGLE_API_KEY, origin, destination)
     path = decode_polyline(direct["polyline"])
     found = places.search_along(config.GOOGLE_API_KEY, sample_points(path, 25000),
-                                max_calls=config.MAX_PLACES_CALLS)
+                                max_calls=config.MAX_PLACES_CALLS, fuel_type=fuel_type)
     stations = corridor_filter(found, path, buffer_m)
     if not any(s["price"] for s in stations):
         warnings.append("Places returned no fuel prices for these stations: type prices "
