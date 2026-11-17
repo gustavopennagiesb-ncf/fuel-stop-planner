@@ -402,6 +402,24 @@ with tab_trip:
     cheap_is_best = bool(cheap and best_id and cheap["id"] == best_id)
 
     with answer:
+        if trip.get("distance_m") and p_ref:
+            trip_miles = trip["distance_m"] / 1609.34
+            trip_gallons = trip_miles / mpg
+            trip_cost = trip_gallons * p_ref
+            nb = rec["best"]["net_benefit"] if rec["verdict"] == "go" else 0.0
+            with st.container(horizontal=True):
+                st.metric("Total trip fuel cost", f"${trip_cost:.2f}", border=True,
+                          help=f"{trip_miles:.0f} mi ÷ {mpg:.0f} mpg × ${p_ref:.2f}/gal "
+                               f"(route median price)")
+                st.metric("Potential savings", f"${max(nb, 0):.2f}",
+                          delta=f"-${max(nb, 0):.2f} off your trip" if nb > 0 else None,
+                          border=True,
+                          help="Net benefit of the recommended stop after detouring cost and "
+                               "your value of time. $0.00 means no detour pays off.")
+                st.metric("Trip distance", f"{trip_miles:.0f} mi", border=True,
+                          help="Direct route distance, not including any detour.")
+                st.metric("Fuel needed", f"{trip_gallons:.1f} gal", border=True,
+                          help=f"{trip_miles:.0f} mi ÷ {mpg:.0f} mpg")
         with st.container(border=True):
             if not stations:
                 st.warning("No stations were listed within the search corridor. Widen the "
