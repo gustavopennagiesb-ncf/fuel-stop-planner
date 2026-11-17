@@ -17,7 +17,6 @@ load_dotenv()
 load_secrets()
 
 import config  # noqa: E402
-import driver
 import insight
 import location
 import places_autocomplete
@@ -36,8 +35,8 @@ FE_RETRY_S = 60  # seconds before the car lookup is tried again after fueleconom
 
 st.set_page_config(page_title="Fuel Stop Planner", page_icon=":material/local_gas_station:", layout="wide")
 st.header("Fuel Stop Planner")
-st.caption("When to fill up (EIA weekly prices) and where (stations along your route, with "
-           "detour break-even). Not financial advice: historical data and simple arithmetic.")
+st.caption("Find the best gas stop on your route — and see if the detour actually saves you money. "
+           "Not financial advice.")
 
 provider = config.PROVIDER
 if provider == "fixture" or not (config.GOOGLE_API_KEY and config.EIA_API_KEY):
@@ -284,8 +283,8 @@ for w in trip["warnings"]:
 # The order is what the user wants first; the manual goes last so the app opens on an answer.
 # The `with` blocks below stay in source order, so "Where to stop" still computes p_ref, priced
 # and ranked before the tabs that read them.
-tab_trip, tab_driver, tab_when, tab_sens, tab_eda, tab_ai, tab_help = st.tabs(
-    [":material/local_gas_station: Where to stop", ":material/delivery_dining: Driver mode",
+tab_trip, tab_when, tab_sens, tab_eda, tab_ai, tab_help = st.tabs(
+    [":material/local_gas_station: Where to stop",
      ":material/calendar_month: When to fill up", ":material/calculate: Sensitivity",
      ":material/analytics: EDA", ":material/smart_toy: AI",
      ":material/help: How to use"], key="main_tabs", on_change="rerun")
@@ -309,9 +308,6 @@ with tab_help:
         "- *I am on a trip and want the best station on the way* → **Where to stop**. Edit any "
         "price in the table (typed prices always work). The app ranks stations by net benefit: "
         "fuel saved minus the extra fuel and time of the detour.\n"
-        "- *I deliver (DoorDash and similar) and want to know how far I can go before "
-        "refueling* → **Driver mode**. Enter your tank level; it shows miles, hours of work and "
-        "orders left before your reserve. It does not predict orders.\n"
         "- *Is this a good week to fill up?* → **When to fill up**: weekly Florida/U.S. prices "
         "and a check of whether any simple forecast beats 'next week = this week'.\n"
         "- *How much is a detour worth?* → **Sensitivity**: extra miles a detour is worth for "
@@ -326,20 +322,14 @@ with tab_help:
         "Not financial advice.")
     with st.expander("Glossary"):
         st.markdown(
-            "- **Net benefit**: dollars saved by filling at a cheaper station, minus the fuel "
-            "and the time cost of getting there. Positive means the detour pays off.\n"
-            "- **Reference price**: what you would pay without detouring; the median price of "
-            "stations within 800 m of the route, or a price you type.\n"
-            "- **Detour source**: `routes` is an exact detour from the Google Routes API; "
-            "`approx` is an out-and-back estimate used when no exact detour was fetched.\n"
-            "- **Value of time**: dollars per hour you assign to your time; detour minutes are "
-            "charged at this rate.\n"
-            "- **Naive forecast**: 'next week's price = this week's price'. A forecast is only "
-            "useful if it beats this.\n"
-            "- **EDA**: exploratory data analysis, a first look at the data's gaps, outliers "
-            "and shape.\n"
-            "- **Reserve**: fuel you do not plan to use (Driver mode), so you are never "
-            "stranded.\n"
+            "- **You save**: the net dollars you gain by stopping at a cheaper station, "
+            "after the extra fuel and time of the detour are subtracted. Positive = worth it.\n"
+            "- **Gas price on your route**: the typical price at stations along your direct "
+            "route (no detour). Used as the baseline for comparing stations.\n"
+            "- **Value of time**: how much an hour of your time is worth to you. The app uses "
+            "this to put a dollar cost on detour minutes.\n"
+            "- **Naive forecast** (When to fill up tab): 'next week's price = this week's "
+            "price'. A forecast is only useful if it beats this simple guess.\n"
             "- **MPGe**: the electric-car equivalent of mpg; not gallons.")
 
 # ---------------------------------------------------------------- where to stop
@@ -372,8 +362,8 @@ def maps_buttons(best, live):
 
 
 with tab_trip:
-    st.caption("What this tab answers: which station on your route is worth a detour, and where "
-               "it is. The answer comes first; prices, settings and details are below it.")
+    st.caption("What this tab answers: which station is worth the detour. "
+               "The recommendation is first; prices and details follow.")
     answer = st.container()  # the answer, filled below once the prices are known
     stations = trip["stations"]
     with st.expander("Edit prices and settings", icon=":material/tune:"):
@@ -470,9 +460,9 @@ with tab_trip:
                                f"{alt['extra_minutes']:.0f} min detour")
         if ranked:
             with st.container(horizontal=True):
-                st.metric("Price without detouring", f"${p_ref:.2f}/gal", border=True,
-                          help="The median price of stations right on your route: what the same "
-                               "fill-up costs if you do not leave the route.")
+                st.metric("Gas price on your route", f"${p_ref:.2f}/gal", border=True,
+                          help="The typical price at stations right on your route — what you'd pay "
+                               "without taking any detour.")
                 n_total = len(stations)
                 n_priced = sum(1 for s in priced if s["price"] is not None)
                 st.metric("Stations with a price",
@@ -487,15 +477,13 @@ with tab_trip:
                                f"them in the ranking.")
             lost = insight.regret(ranked)
             if lost > 0 and rec["verdict"] == "go":
-                st.caption(f"Choosing the cheapest station instead of the best one would cost "
-                           f"you ${lost:.2f} on this fill-up.")
-            elif lost > 0:  # "skip": no stop is being recommended, so do not compare with one
-                st.caption(f"The cheapest station ranks ${lost:.2f} below the best-ranked one, "
-                           f"but no detour pays off enough here, so the advice is to fill up "
-                           f"on your route.")
+                st.caption(f"If you stopped at the cheapest station instead, you'd save "
+                           f"${lost:.2f} less on this fill-up.")
+            elif lost > 0:
+                st.caption(f"The cheapest station isn't the best one here — but no detour "
+                           f"pays off enough, so fill up at the first station on your route.")
             else:
-                st.caption("The cheapest station is also the best one here, so choosing on "
-                           "price alone would cost you nothing.")
+                st.caption("The cheapest station is also the best choice here.")
             # Real station prices against a made-up series (or the reverse) are not comparable.
             florida = series["florida"].dropna() if "florida" in series else []
             same_kind = (trip["mode"] == "fixture") == (series_label == "synthetic")
@@ -509,47 +497,48 @@ with tab_trip:
                 week = florida.index[-1]
                 week = week.strftime("%Y-%m-%d") if hasattr(week, "strftime") else str(week)
                 verdict = versus["verdict"].replace("state average", "Florida average")
-                st.caption(f"The median price in your search corridor is ${versus['route_median']:.2f}/gal; "
-                           f"the Florida weekly average for the week of {week} ({series_label}) "
-                           f"is ${versus['state_latest']:.2f}/gal. "
-                           f"The route is {gap}{verdict}.")
+                st.caption(f"Prices on your route: ${versus['route_median']:.2f}/gal. "
+                           f"Florida average ({week}, {series_label}): "
+                           f"${versus['state_latest']:.2f}/gal. "
+                           f"Your route is {gap}{verdict}.")
             grid = insight.decision_grid(detoured, p_ref, mpg, speed)
             rank_gap = insight.price_rank_gap(ranked)
             flip = insight.flip_point(detoured, p_ref, gallons, mpg, speed)
-            with st.expander("Is the cheapest station the best one?",
+            with st.expander("Does cheapest always mean best?",
                              icon=":material/balance:"):
-                st.markdown(f"Price alone picked the wrong station in "
-                            f"**{grid['misled']} of {grid['total']} combinations "
-                            f"({grid['share'] * 100:.0f}%)** of fill-up size and value of time.")
-                st.markdown(f"Across all {grid['total']} combinations, choosing on price "
-                            f"cost a median of **${grid['median_regret']:.2f}** and at most "
-                            f"**${grid['max_regret']:.2f}** per fill-up.")
+                st.markdown(f"Picking the **cheapest** sign instead of the **best-ranked** stop "
+                            f"would have cost you money in "
+                            f"**{grid['misled']} of {grid['total']} scenarios** "
+                            f"({grid['share'] * 100:.0f}%) tested across different fill-up sizes "
+                            f"and how much you value your time.")
+                st.markdown(f"The typical loss from going by price alone: "
+                            f"**${grid['median_regret']:.2f}** per fill-up "
+                            f"(worst case: **${grid['max_regret']:.2f}**).")
                 if rank_gap == 1:
                     st.markdown("Right now the cheapest station is also first in the ranking.")
                 else:
-                    st.markdown(f"Right now the cheapest station ranks **#{rank_gap}** once the "
-                                f"detour is priced.")
+                    st.markdown(f"Right now the cheapest station ranks **#{rank_gap}** "
+                                f"when detour cost and your time are included.")
                 if flip is None:
-                    st.markdown(f"At {gallons:g} gallons the best station does not change "
-                                f"across these values of time.")
+                    st.markdown(f"At {gallons:g} gallons the best station stays the same "
+                                f"regardless of how you value your time.")
                 else:
-                    st.markdown(f"At {gallons:g} gallons the best station changes when your "
-                                f"time is worth about ${flip:.2f}/h or more.")
+                    st.markdown(f"At {gallons:g} gallons the best station changes once your time "
+                                f"is worth **${flip:.2f}/h or more** — adjust the slider in the "
+                                f"sidebar to see.")
                 table = pd.DataFrame(
                     {f"${v:g}/h": [next(c["regret"] for c in grid["cells"]
                                         if c["gallons"] == g and c["vot"] == v)
                                    for g in insight.GALLONS_GRID]
                      for v in insight.VOT_GRID},
                     index=[f"{g:g} gal" for g in insight.GALLONS_GRID])
-                st.caption("Dollars lost by choosing the cheapest station, by fill-up size (rows) "
-                           "and value of time (columns). $0.00 means price alone was right.")
+                st.caption("How much you'd lose by picking the cheapest station — rows are "
+                           "gallons, columns are how much an hour of your time is worth. "
+                           "$0.00 means price alone happened to be right.")
                 st.dataframe(table.style.format("${:.2f}"), width="stretch",
                              alt="Dollars lost by choosing the cheapest station, by fill-up size "
                                  "and value of time")
-                g, v = insight.GALLONS_GRID, insight.VOT_GRID
-                st.caption(f"Tried {g[0]:g} to {g[-1]:g} gallons and ${v[0]:g} to ${v[-1]:g} an "
-                           f"hour. This describes this route, these stations, today: it is not "
-                           f"a forecast.")
+                st.caption("Based on this route and these stations only — not a general forecast.")
 
     if ranked:
         with st.container(border=True):
@@ -592,27 +581,25 @@ with tab_trip:
                            "GOOGLE_MAPS_JS_KEY (a referrer-restricted browser key) to show it; "
                            "until then only the table is shown.")
         with st.expander("All stations", icon=":material/table:"):
-            cols = ["name", "price", "net_benefit", "extra_minutes", "extra_miles", "off_route_m"]
-            if live:
-                cols.append("detour_source")  # routes = exact Routes API, approx = out-and-back
+            cols = ["name", "price", "net_benefit", "extra_minutes", "extra_miles"]
             frame = pd.DataFrame(ranked)
             show = frame[[c for c in cols if c in frame.columns]]  # tolerate a missing column
             st.dataframe(show.head(25), hide_index=True, width="stretch",
                          alt="All stations ranked by how much they save", column_config={
-                "name": "Station", "price": st.column_config.NumberColumn("Price ($/gal)"),
-                "net_benefit": st.column_config.NumberColumn("You save ($)"),
-                "extra_minutes": st.column_config.NumberColumn("Detour (min)"),
-                "extra_miles": st.column_config.NumberColumn("Detour (miles)"),
-                "off_route_m": st.column_config.NumberColumn("Off route (m)"),
-                "detour_source": "Detour source"})
+                "name": "Station",
+                "price": st.column_config.NumberColumn("Price ($/gal)", format="$%.2f"),
+                "net_benefit": st.column_config.NumberColumn("You save ($)", format="$%.2f"),
+                "extra_minutes": st.column_config.NumberColumn("Detour (min)", format="%.0f min"),
+                "extra_miles": st.column_config.NumberColumn("Detour (miles)", format="%.1f mi")})
         with st.expander("How the saving is calculated", icon=":material/calculate:"):
             st.markdown(
-                "**You save** = gallons x (price without detouring - station price) - the fuel "
-                "burned on the detour - the value of the detour time. *Price without "
-                "detouring* is the median price of stations right on your route (or the price "
-                "you type). In google mode the detour comes from Google Routes for the "
-                "cheapest stations (`routes`) and from a straight out-and-back estimate for "
-                "the others (`approx`).")
+                "**What you save** = (gallons × price difference) − fuel burned getting there "
+                "− cost of your time on the detour.\n\n"
+                "The **price difference** is compared against the typical price at stations "
+                "right on your route (or a price you type in). "
+                "The **detour cost** uses real routing for the top stations and a straight "
+                "out-and-back estimate for the rest. "
+                "The **time cost** uses the value you set in the sidebar.")
 
 # ---------------------------------------------------------------- when to fill up
 with tab_when:
@@ -720,93 +707,6 @@ with tab_sens:
                                   labels=dict(x="price gap $/gal", y="value of time $/h",
                                               color="miles")), width="stretch",
                         alt="Heat map of break-even extra miles by price gap and value of time")
-
-# ---------------------------------------------------------------- driver mode
-with tab_driver:
-    st.caption("What this tab answers: how many miles, hours of work and orders you can do "
-               "before reaching your fuel reserve. Set your tank level first.")
-    st.subheader("Driver mode: how far until I must refuel?")
-    with st.container(border=True):
-        c1, c2 = st.columns(2)
-        level = c1.select_slider("Tank level (eighths, read from the gauge)",
-                                 options=list(range(0, 9)), value=4, key="driver_level")
-        reserve_label = c2.segmented_control(
-            "Reserve", ["Standard", "Conservative (1/4 tank)"], default="Standard",
-            key="driver_reserve_mode") or "Standard"
-        st.caption(f"Using tank {tank} gal and {mpg} mpg from Your car above: check both.")
-        reserve_gal = driver.reserve_gallons(
-            tank, "conservative" if reserve_label.startswith("Conservative") else "standard")
-        st.caption(f"Reserve: {reserve_gal:.1f} gal (about {reserve_gal * mpg:.0f} miles at your mpg)")
-    # Drawn here, right under the tank inputs, and filled once the pace is known. No border of
-    # its own: the metrics inside are already cards.
-    results = st.container()
-    with st.container(border=True):
-        st.markdown("**Your pace**")
-        c3, c4 = st.columns(2)
-        mph = c3.number_input("Miles per hour of work", min_value=1.0,
-                              value=driver.DEFAULT_MILES_PER_HOUR, step=1.0, key="driver_mph")
-        mpo = c4.number_input("Miles per order", min_value=1.0,
-                              value=driver.DEFAULT_MILES_PER_ORDER, step=1.0, key="driver_mpo")
-        st.caption("Defaults are assumptions, not measured values: 15 mi/h, 8 mi/order, reserve 15% "
-                   "of tank (min 2 gal), low/high cases use mpg x 0.85 / x 1.10. Replace them with "
-                   "your own numbers.")
-    rng = driver.miles_until_reserve(level, tank, mpg, reserve_gal)
-    cases = [("Low", rng["low"]), ("Base", rng["base"]), ("High", rng["high"])]
-    shown = [(n, driver.round_miles(m)) for n, m in cases]
-    rows = {"Miles": [], "Hours (approx.)": [],
-            "Orders (approx.)": []}
-    for _, m in shown:
-        hours, orders = driver.to_hours_orders(m, mph, mpo)
-        rows["Miles"].append(m)
-        rows["Hours (approx.)"].append(hours)
-        rows["Orders (approx.)"].append(orders)
-    with results:
-        with st.container(horizontal=True):  # one row even on a phone
-            for name, m in cases:
-                st.metric(f"{name} miles", f"{driver.round_miles(m)} mi", border=True)
-        msg = driver.status(shown[0][1], shown[1][1])
-        (st.warning if "refuel soon" in msg else st.info)(msg)
-        st.dataframe(pd.DataFrame(rows, index=[n for n, _ in shown]).T, width="stretch",
-                     alt="Miles, hours and orders until the reserve, for the low, base and high cases")
-        st.caption("Miles are rounded to the nearest 5; hours and orders are approximate, "
-                   "rounded down, and computed from the rounded miles shown. Estimates only: "
-                   "use before or between orders, never while driving.")
-
-    with st.expander("How this is calculated"):
-        st.markdown(
-            "**Base miles** = (gallons now - reserve) x mpg. The app does not predict orders "
-            "and does not use DoorDash data: hours and orders are miles divided by the two "
-            "rates you type.\n\n"
-            "| Term | Plain-language meaning | Where the value comes from |\n"
-            "|---|---|---|\n"
-            "| Tank level in eighths | The needle read as 0 to 8. A reading is a band, not a "
-            "point: an eighth of a 12-gal tank is 1.5 gal, and reading by eye is off by up to "
-            "half an eighth (about 0.75 gal, about 22 miles at 30 mpg). | Our own "
-            "arithmetic, not an external source. Real gauge error is larger and not measured. |\n"
-            "| Reserve | Fuel you do not plan to use, so you are never stranded. Stored in "
-            "gallons, shown in miles with your mpg. | Standard max(15%, 2 gal): "
-            "assumption; the 2 gal floor sits near the range where cars' low-fuel light comes "
-            "on (about 1.7 to 2.6 gal in owner's manuals, seen only through third-party "
-            "mirrors). "
-            "Conservative max(25% of tank, Standard reserve): the quarter-tank idea is "
-            "commonly cited advice (AAA, fleet policies); not independently verified by us. "
-            "The floor keeps small tanks at least at the Standard reserve. |\n"
-            "| Base miles | (gallons now - reserve) x mpg: how far you can go before touching "
-            "the reserve. | Formula. Assumes the gauge is linear (E means 0 gal) and that your tank size and mpg are right. |\n"
-            "| Low case | One eighth less fuel than you read, and mpg x 0.85 (assumed: "
-            "stop-and-go may use more fuel than the label; do not apply this on top of a city "
-            "mpg figure you already picked in the car lookup, it would double-count). | "
-            "-1 eighth is a design choice; 0.85 is an assumption. |\n"
-            "| High case | Half an eighth more fuel and mpg x 1.10. | +0.5 eighth is derived "
-            "from rounding arithmetic; 1.10 is an assumption. The range is skewed low on "
-            "purpose because running short costs more than running long. |\n"
-            "| Miles per hour of work | Miles you drive per hour online, including empty miles "
-            "to the restaurant. Turns miles into hours. | Default 15: assumption, no measured "
-            "source and no Florida data. Better: your odometer miles / online hours. |\n"
-            "| Miles per order | All miles in a shift divided by orders done. Turns miles "
-            "into approximate orders. | Default 8: assumption. Best: your own shift. |\n"
-            "| Stacked errors | Low and high combine every worst case at once, so the range "
-            "is wide on purpose. | Design choice. |\n")
 
 # ---------------------------------------------------------------- AI explanation
 with tab_ai:

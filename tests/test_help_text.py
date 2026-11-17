@@ -25,12 +25,12 @@ def at(monkeypatch):
 
 def test_every_tab_starts_with_what_it_answers(at):
     intros = [c.value for c in at.caption if c.value.startswith(INTRO)]
-    assert len(intros) == 6  # Where, When, EDA, Sensitivity, Driver mode, AI
+    assert len(intros) == 5  # Where, When, EDA, Sensitivity, AI
 
 
-def test_how_to_use_covers_every_tab_and_driver_mode(at):
+def test_how_to_use_covers_every_tab(at):
     text = " ".join(m.value for m in at.markdown)
-    for name in ("Where to stop", "When to fill up", "EDA", "Sensitivity", "Driver mode", "AI"):
+    for name in ("Where to stop", "When to fill up", "EDA", "Sensitivity", "AI"):
         assert name in text
     assert "Which tab should I open?" in text
 
@@ -52,7 +52,7 @@ def test_glossary_defines_the_jargon(at):
     glossary = [e for e in at.expander if e.label == "Glossary"]
     assert glossary, "no Glossary expander"
     text = " ".join(m.value for m in glossary[0].markdown)
-    for term in ("Net benefit", "Reference price", "Detour source", "EDA", "Naive forecast"):
+    for term in ("You save", "Gas price on your route", "Value of time", "Naive forecast"):
         assert term in text
 
 
@@ -79,9 +79,9 @@ def test_the_sidebar_header_names_what_the_sidebar_holds(at):
 def test_the_app_opens_on_the_answer_and_keeps_the_manual_last(at):
     labels = [t.label for t in at.tabs]
     assert labels[0].endswith("Where to stop")
-    assert labels[1].endswith("Driver mode")
+    assert labels[1].endswith("When to fill up")
     assert labels[-1].endswith("How to use")
 
 
-def test_every_tab_label_carries_an_icon_so_seven_tabs_stay_scannable(at):
+def test_every_tab_label_carries_an_icon_so_tabs_stay_scannable(at):
     assert all(t.label.startswith(":material/") for t in at.tabs)

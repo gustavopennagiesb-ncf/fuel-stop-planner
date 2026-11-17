@@ -302,12 +302,12 @@ def test_the_answer_is_not_repeated_in_the_metrics(monkeypatch):
     the card cannot: what the same fill-up costs without detouring."""
     app, _ = make_app(monkeypatch)
     labels = {m.label for m in app.metric}
-    assert "Price without detouring" in labels
+    assert "Gas price on your route" in labels
     assert "Best option" not in labels and "You save (after the detour)" not in labels
 
 
 # --------------------------------------------------------------------- price is a bad proxy
-INSIGHT = "Is the cheapest station the best one?"
+INSIGHT = "Does cheapest always mean best?"
 
 
 def all_text(app):
@@ -316,19 +316,19 @@ def all_text(app):
 
 def test_the_regret_line_says_what_choosing_on_price_costs(monkeypatch):
     app, _ = make_app(monkeypatch, stations=crafted())
-    assert any("would cost you $" in c.value for c in app.caption)
+    assert any("you'd save" in c.value and "less" in c.value for c in app.caption)
     assert not app.exception
 
 
 def versus_lines(app):
-    return [c.value for c in app.caption if "median price in your search corridor" in c.value]
+    return [c.value for c in app.caption if "Prices on your route:" in c.value]
 
 
 def test_the_corridor_is_compared_with_the_florida_average_when_both_are_synthetic(monkeypatch):
     app, _ = make_app(monkeypatch, stations=crafted())
     lines = versus_lines(app)
     assert len(lines) == 1
-    assert "Florida weekly average for the week of 20" in lines[0] and "(synthetic)" in lines[0]
+    assert "Florida average (" in lines[0] and "synthetic" in lines[0]
     assert "the state" not in lines[0] and "np.float64" not in lines[0]
 
 
@@ -347,7 +347,7 @@ def test_real_stations_are_compared_with_a_real_series(monkeypatch):
                       series=(real, "EIA live"))
     lines = versus_lines(app)
     assert len(lines) == 1
-    assert "week of 2026-11-09 (EIA live)" in lines[0] and "$3.60/gal" in lines[0]
+    assert "2026-11-09" in lines[0] and "EIA live" in lines[0] and "$3.60/gal" in lines[0]
 
 
 def test_an_empty_series_shows_no_comparison_instead_of_crashing(monkeypatch):
@@ -363,12 +363,12 @@ def test_the_cheapest_question_expander_reports_a_share(monkeypatch):
     assert len(found) == 1
     text = " ".join(m.value for m in found[0].markdown) + " " + \
         " ".join(c.value for c in found[0].caption)
-    assert "this route, these stations, today" in text
-    assert "**15 of 20 combinations (75%)**" in text
+    assert "this route and these stations" in text
+    assert "**15 of 20 scenarios**" in text and "(75%)" in text
     assert "ranks **#5**" in text
-    assert "changes when your time is worth about $5.48/h or more" in text
-    assert "a median of **$1.59** and at most **$5.43**" in text
-    assert len(found[0].dataframe) == 1  # the 4 x 5 grid of dollars lost
+    assert "$5.48/h or more" in text
+    assert "**$1.59**" in text and "**$5.43**" in text
+    assert len(found[0].dataframe) == 1  # 4 x 5 grid of dollars lost
 
 
 def test_when_no_detour_pays_off_the_regret_line_does_not_mention_a_recommended_stop(monkeypatch):
@@ -389,14 +389,14 @@ def test_the_panel_and_the_regret_line_agree_when_price_misleads(monkeypatch):
     expander = [e for e in app.expander if e.label == INSIGHT][0]
     text = " ".join(m.value for m in expander.markdown)
     assert "ranks **#" in text and "ranks **#1**" not in text
-    assert any("would cost you $" in c.value for c in app.caption)
-    assert not any("would cost you nothing" in c.value for c in app.caption)
+    assert any("you'd save" in c.value and "less" in c.value for c in app.caption)
+    assert not any("also the best choice" in c.value for c in app.caption)
 
 
 def test_when_the_cheapest_is_also_the_best_the_insight_says_it_costs_nothing(monkeypatch):
     app, _ = make_app(monkeypatch, stations=[s for s in crafted() if s["id"] != "far"])
-    assert any("would cost you nothing" in c.value for c in app.caption)
-    assert not any("would cost you $" in c.value for c in app.caption)
+    assert any("also the best choice" in c.value for c in app.caption)
+    assert not any("you'd save" in c.value and "less" in c.value for c in app.caption)
     expander = [e for e in app.expander if e.label == INSIGHT][0]
     assert "also first in the ranking" in " ".join(m.value for m in expander.markdown)
 
