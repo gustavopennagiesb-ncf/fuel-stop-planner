@@ -371,11 +371,19 @@ with tab_trip:
                  "route. The default of $0.50 is an assumption: a smaller saving is not worth "
                  "the stop.")
         st.markdown("**Station prices** (typed prices always work)")
-        table = pd.DataFrame([{"id": s["id"], "name": s["name"], "price": s["price"]}
-                              for s in stations], columns=["id", "name", "price"])
-        edited = st.data_editor(table, disabled=["id", "name"], hide_index=True,
-                                column_order=["name", "price"], width="stretch",
+        table = pd.DataFrame([{"id": s["id"], "name": s["name"], "price": s["price"],
+                                "status": "" if s["price"] is not None else "⚠ no price"}
+                              for s in stations], columns=["id", "name", "price", "status"])
+        table = table.sort_values("status", ascending=False).reset_index(drop=True)
+        edited = st.data_editor(table, disabled=["id", "name", "status"], hide_index=True,
+                                column_order=["status", "name", "price"], width="stretch",
                                 key="price_editor",
+                                column_config={
+                                    "status": st.column_config.TextColumn("", width="small"),
+                                    "price": st.column_config.NumberColumn(
+                                        "Price $/gal", min_value=1.0, max_value=9.0,
+                                        step=0.01, format="$%.2f"),
+                                },
                                 alt="Station prices; edit the price column to change the ranking")
         price_by_id = dict(zip(edited["id"], edited["price"]))
         priced = [{**s, "price": (None if pd.isna(price_by_id.get(s["id"])) else
