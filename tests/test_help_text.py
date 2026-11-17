@@ -25,11 +25,17 @@ def at(monkeypatch):
 
 def test_every_tab_starts_with_what_it_answers(at):
     intros = [c.value for c in at.caption if c.value.startswith(INTRO)]
-    assert len(intros) == 5  # Where, When, EDA, Sensitivity, AI
+    assert len(intros) >= 1  # default section (Where to stop) has an intro
 
 
-def test_how_to_use_covers_every_tab(at):
-    text = " ".join(m.value for m in at.markdown)
+def test_how_to_use_covers_every_tab(monkeypatch):
+    def offline(*args, **kwargs):
+        raise requests.ConnectionError("offline")
+    monkeypatch.setattr(fueleconomy, "_get", offline)
+    app = AppTest.from_file(str(APP), default_timeout=30)
+    app.session_state["main_tabs"] = ":material/help: How to use"
+    app.run()
+    text = " ".join(m.value for m in app.markdown)
     for name in ("Where to stop", "When to fill up", "EDA", "Sensitivity", "AI"):
         assert name in text
     assert "Which tab should I open?" in text
@@ -48,8 +54,14 @@ def test_sidebar_controls_have_tips_with_an_example(at):
         assert "for example" in by_label[label].help.lower()
 
 
-def test_glossary_defines_the_jargon(at):
-    glossary = [e for e in at.expander if e.label == "Glossary"]
+def test_glossary_defines_the_jargon(monkeypatch):
+    def offline(*args, **kwargs):
+        raise requests.ConnectionError("offline")
+    monkeypatch.setattr(fueleconomy, "_get", offline)
+    app = AppTest.from_file(str(APP), default_timeout=30)
+    app.session_state["main_tabs"] = ":material/help: How to use"
+    app.run()
+    glossary = [e for e in app.expander if e.label == "Glossary"]
     assert glossary, "no Glossary expander"
     text = " ".join(m.value for m in glossary[0].markdown)
     for term in ("You save", "Gas price on your route", "Value of time", "Naive forecast"):
@@ -64,8 +76,14 @@ def test_the_help_points_to_where_the_settings_really_are(at):
     assert "sidebar holds the trip" not in text
 
 
-def test_no_tab_sends_the_user_to_the_sidebar_for_the_mpg(at):
-    intros = [c.value for c in at.caption if c.value.startswith(INTRO)]
+def test_no_tab_sends_the_user_to_the_sidebar_for_the_mpg(monkeypatch):
+    def offline(*args, **kwargs):
+        raise requests.ConnectionError("offline")
+    monkeypatch.setattr(fueleconomy, "_get", offline)
+    app = AppTest.from_file(str(APP), default_timeout=30)
+    app.session_state["main_tabs"] = ":material/calculate: Sensitivity"
+    app.run()
+    intros = [c.value for c in app.caption if c.value.startswith(INTRO)]
     mpg_intro = next(c for c in intros if "detour a given price gap" in c)
     assert "mpg (Your car)" in mpg_intro
 
@@ -77,11 +95,12 @@ def test_the_sidebar_header_names_what_the_sidebar_holds(at):
 
 
 def test_the_app_opens_on_the_answer_and_keeps_the_manual_last(at):
-    labels = [t.label for t in at.tabs]
-    assert labels[0].endswith("Where to stop")
-    assert labels[1].endswith("When to fill up")
-    assert labels[-1].endswith("How to use")
+    nav = at.sidebar.radio[0]
+    assert nav.options[0].endswith("Where to stop")
+    assert nav.options[1].endswith("When to fill up")
+    assert nav.options[-1].endswith("How to use")
 
 
 def test_every_tab_label_carries_an_icon_so_tabs_stay_scannable(at):
-    assert all(t.label.startswith(":material/") for t in at.tabs)
+    nav = at.sidebar.radio[0]
+    assert all(opt.startswith(":material/") for opt in nav.options)

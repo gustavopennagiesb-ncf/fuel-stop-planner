@@ -34,9 +34,41 @@ from services import compute_detours, load_series, load_trip
 FE_RETRY_S = 60  # seconds before the car lookup is tried again after fueleconomy.gov failed
 
 st.set_page_config(page_title="Fuel Stop Planner", page_icon=":material/local_gas_station:", layout="wide")
-st.header("Fuel Stop Planner")
-st.caption("Find the best gas stop on your route — and see if the detour actually saves you money. "
-           "Not financial advice.")
+
+st.html("""
+<div style="background: linear-gradient(135deg, #1E3A8A 0%, #1d4ed8 100%);
+     border-radius: 16px; padding: 32px 44px; display: flex; align-items: center;
+     gap: 28px; margin-bottom: 4px;">
+  <div style="font-size: 64px; line-height: 1; flex-shrink: 0;">⛽</div>
+  <div>
+    <div style="color: white; font-size: 2.4rem; font-weight: 800; margin: 0 0 10px 0;
+         letter-spacing: -0.5px; line-height: 1.1;">Fuel Stop Planner</div>
+    <div style="color: rgba(255,255,255,0.88); font-size: 1.08rem; margin: 0; line-height: 1.6;">
+      Find the best gas stop on your route — and see if the detour actually saves you money.
+    </div>
+  </div>
+</div>
+""")
+
+_f1, _f2, _f3 = st.columns(3)
+with _f1:
+    st.html("""<div style="text-align:center;padding:14px 8px 10px;">
+      <div style="font-size:30px;margin-bottom:7px;">🗺️</div>
+      <div style="font-weight:700;color:#1E3A8A;margin-bottom:5px;font-size:0.95rem;">Route-aware search</div>
+      <div style="font-size:0.82rem;color:#475569;line-height:1.5;">Finds stations along your route, not just nearby</div>
+    </div>""")
+with _f2:
+    st.html("""<div style="text-align:center;padding:14px 8px 10px;">
+      <div style="font-size:30px;margin-bottom:7px;">💰</div>
+      <div style="font-weight:700;color:#1E3A8A;margin-bottom:5px;font-size:0.95rem;">True net savings</div>
+      <div style="font-size:0.82rem;color:#475569;line-height:1.5;">Price gap minus detour fuel and your time</div>
+    </div>""")
+with _f3:
+    st.html("""<div style="text-align:center;padding:14px 8px 10px;">
+      <div style="font-size:30px;margin-bottom:7px;">📊</div>
+      <div style="font-weight:700;color:#1E3A8A;margin-bottom:5px;font-size:0.95rem;">Weekly price trends</div>
+      <div style="font-size:0.82rem;color:#475569;line-height:1.5;">EIA data shows if now is a good time to fill up</div>
+    </div>""")
 
 provider = config.PROVIDER
 if provider == "fixture" or not (config.GOOGLE_API_KEY and config.EIA_API_KEY):
@@ -138,7 +170,7 @@ def address_input(name, label, default_text):
 origin = destination = None
 col_car, col_trip = st.columns(2, vertical_alignment="top")
 with col_car, st.container(border=True, height="stretch"):
-    st.markdown("**Your car**")
+    st.markdown(":material/directions_car: **Your car**")
     with st.expander("Look up my car (fueleconomy.gov)"):
         car = None
         if time.time() < st.session_state.get("fe_down_until", 0.0):
@@ -180,7 +212,7 @@ with col_car, st.container(border=True, height="stretch"):
         default="Regular", key="fuel_grade",
         help="Filters station prices to this grade. Regular = 87 octane.")
 with col_trip, st.container(border=True, height="stretch"):
-    st.markdown("**Your trip**")
+    st.markdown(":material/map: **Your trip**")
     corridor_help = ("How far from your route a station can be and still be listed. For example, "
                      "3 km each side searches a 6 km wide strip along the route.")
     if provider == "google" and config.GOOGLE_API_KEY:
@@ -233,7 +265,18 @@ with col_trip, st.container(border=True, height="stretch"):
         buffer_km = st.number_input("Search corridor width (km each side)", 1.0, 10.0, 3.0, 0.5,
                                     key="buffer_km", help=corridor_help)
 
+_NAV = [
+    ":material/local_gas_station: Where to stop",
+    ":material/calendar_month: When to fill up",
+    ":material/calculate: Sensitivity",
+    ":material/analytics: EDA",
+    ":material/smart_toy: AI",
+    ":material/help: How to use",
+]
+
 with st.sidebar:
+    st.radio("Navigate to", _NAV, key="main_tabs", label_visibility="collapsed")
+    st.divider()
     st.header("Fill-up and time")
     st.caption("Drag a slider or type the exact value in the box beside it.")
     gallons = slider_with_number(
@@ -280,24 +323,29 @@ except Exception as e:  # network or key problems should not crash the demo
 for w in trip["warnings"]:
     st.info(w)
 
-# The order is what the user wants first; the manual goes last so the app opens on an answer.
-# The `with` blocks below stay in source order, so "Where to stop" still computes p_ref, priced
-# and ranked before the tabs that read them.
-tab_trip, tab_when, tab_sens, tab_eda, tab_ai, tab_help = st.tabs(
-    [":material/local_gas_station: Where to stop",
-     ":material/calendar_month: When to fill up", ":material/calculate: Sensitivity",
-     ":material/analytics: EDA", ":material/smart_toy: AI",
-     ":material/help: How to use"], key="main_tabs", on_change="rerun")
+# Shared computation — runs every rerun so all sections can read priced, ranked, etc.
+_stations = trip["stations"]
+_edit_df = st.session_state.get("_price_df")  # set by data_editor on "Where to stop"
+_price_by_id = (dict(zip(_edit_df["id"], _edit_df["price"])) if _edit_df is not None
+                else {s["id"]: s.get("price") for s in _stations})
+_min_saving_val = float(st.session_state.get("min_saving", recommend.MIN_SAVING_DEFAULT))
+priced = [{**s, "price": (None if pd.isna(_price_by_id.get(s["id"])) else
+                          float(_price_by_id[s["id"]]))} for s in _stations]
+p_ref = reference_price(priced)
+if p_ref is None:
+    p_ref = float(st.session_state.get("p_ref_manual", 3.6))
+detoured = compute_detours({**trip, "stations": priced})
+ranked = rank_stations(detoured, p_ref, gallons, mpg, vot, speed)
+rec = recommend.recommend(ranked, _min_saving_val)
+live = trip["mode"] == "google"
+best_id = rec["best"]["id"] if rec["verdict"] == "go" else None
+cheap = recommend.cheapest(ranked)
+cheap_is_best = bool(cheap and best_id and cheap["id"] == best_id)
 
-
-def is_open(tab):
-    """With on_change="rerun" Streamlit says which tab is open, so a tab's heavy body can run
-    only then. Widgets stay outside the guard so their values survive while the tab is closed.
-    `None` (state unknown, e.g. in AppTest) counts as open."""
-    return tab.open is not False
+_selected = st.session_state.get("main_tabs", _NAV[0])
 
 # ---------------------------------------------------------------- how to use
-with tab_help:
+if _selected == ":material/help: How to use":
     st.subheader("How to use this app")
     st.markdown(
         "**Start with \"Your car\" at the top:** pick your car (or set the mpg) and your tank "
@@ -361,13 +409,12 @@ def maps_buttons(best, live):
                    "synthetic test mode because its stations are made up.")
 
 
-with tab_trip:
+if _selected == ":material/local_gas_station: Where to stop":
     st.caption("What this tab answers: which station is worth the detour. "
                "The recommendation is first; prices and details follow.")
     answer = st.container()  # the answer, filled below once the prices are known
-    stations = trip["stations"]
     with st.expander("Edit prices and settings", icon=":material/tune:"):
-        min_saving = st.number_input(
+        st.number_input(
             "Only recommend a stop that saves at least ($)", 0.0, 20.0,
             recommend.MIN_SAVING_DEFAULT, 0.25, key="min_saving",
             help="Below this saving the app tells you to fill up at the first station on your "
@@ -376,9 +423,9 @@ with tab_trip:
         st.markdown("**Station prices** (typed prices always work)")
         table = pd.DataFrame([{"id": s["id"], "name": s["name"], "price": s["price"],
                                 "status": "" if s["price"] is not None else "⚠ no price"}
-                              for s in stations], columns=["id", "name", "price", "status"])
+                              for s in _stations], columns=["id", "name", "price", "status"])
         table = table.sort_values("status", ascending=False).reset_index(drop=True)
-        edited = st.data_editor(table, disabled=["id", "name", "status"], hide_index=True,
+        _edited = st.data_editor(table, disabled=["id", "name", "status"], hide_index=True,
                                 column_order=["status", "name", "price"], width="stretch",
                                 key="price_editor",
                                 column_config={
@@ -388,21 +435,11 @@ with tab_trip:
                                         step=0.01, format="$%.2f"),
                                 },
                                 alt="Station prices; edit the price column to change the ranking")
-        price_by_id = dict(zip(edited["id"], edited["price"]))
-        priced = [{**s, "price": (None if pd.isna(price_by_id.get(s["id"])) else
-                                  float(price_by_id[s["id"]]))} for s in stations]
-        p_ref = reference_price(priced)
-        if p_ref is None:
-            p_ref = st.number_input("No priced station is on the route: type the price you would "
-                                    "pay on the route ($/gal)", 2.0, 6.0, 3.6, 0.01)
-    detoured = compute_detours({**trip, "stations": priced})
-    ranked = rank_stations(detoured, p_ref, gallons, mpg, vot, speed)
-    rec = recommend.recommend(ranked, min_saving)
-    live = trip["mode"] == "google"
-    best_id = rec["best"]["id"] if rec["verdict"] == "go" else None
-
-    cheap = recommend.cheapest(ranked)
-    cheap_is_best = bool(cheap and best_id and cheap["id"] == best_id)
+        st.session_state["_price_df"] = _edited
+        if reference_price(priced) is None:
+            st.number_input("No priced station is on the route: type the price you would "
+                            "pay on the route ($/gal)", 2.0, 6.0, 3.6, 0.01,
+                            key="p_ref_manual")
 
     with answer:
         if trip.get("distance_m") and p_ref:
@@ -424,7 +461,7 @@ with tab_trip:
                 st.metric("Fuel needed", f"{trip_gallons:.1f} gal", border=True,
                           help=f"{trip_miles:.0f} mi ÷ {mpg:.0f} mpg")
         with st.container(border=True):
-            if not stations:
+            if not _stations:
                 st.warning("No stations were listed within the search corridor. Widen the "
                            "corridor under Your trip and press Find stations.",
                            title="No stations found near this route")
@@ -463,7 +500,7 @@ with tab_trip:
                 st.metric("Gas price on your route", f"${p_ref:.2f}/gal", border=True,
                           help="The typical price at stations right on your route — what you'd pay "
                                "without taking any detour.")
-                n_total = len(stations)
+                n_total = len(_stations)
                 n_priced = sum(1 for s in priced if s["price"] is not None)
                 st.metric("Stations with a price",
                           f"{n_priced} of {n_total}" if n_total > n_priced else f"{n_priced}",
@@ -602,27 +639,26 @@ with tab_trip:
                 "The **time cost** uses the value you set in the sidebar.")
 
 # ---------------------------------------------------------------- when to fill up
-with tab_when:
+elif _selected == ":material/calendar_month: When to fill up":
     st.caption("What this tab answers: is it worth timing your fill-up to the weekly price? "
                "It tests whether any forecast beats the naive guess that next week equals this "
                "week.")
     st.subheader(f"Weekly regular gasoline, $/gal ({series_label})")
-    if is_open(tab_when):
-        s_fl = series["florida"].dropna()
-        st.line_chart(series[["florida", "us"]].dropna().tail(260),
-                      alt="Weekly regular gasoline price, Florida and U.S., last five years")
-        st.markdown("**Does any simple model beat 'next week = this week'?** Rolling-origin "
-                    "evaluation on the Florida series, error shown as a ratio to the naive forecast "
-                    "(below 1.00 beats naive).")
-        ev = rolling_origin_eval(s_fl.to_numpy())
-        rows = [{"method": m, **{f"h={h}": ev[m][h]["ratio_to_naive"] for h in ev[m]}} for m in ev]
-        st.dataframe(pd.DataFrame(rows), hide_index=True,
-                     alt="Forecast error as a ratio to the naive forecast, by method and horizon")
-        st.caption("If nothing beats naive, the honest advice is: prices move too randomly to time "
-                   "the week; use the station comparison instead.")
+    s_fl = series["florida"].dropna()
+    st.line_chart(series[["florida", "us"]].dropna().tail(260),
+                  alt="Weekly regular gasoline price, Florida and U.S., last five years")
+    st.markdown("**Does any simple model beat 'next week = this week'?** Rolling-origin "
+                "evaluation on the Florida series, error shown as a ratio to the naive forecast "
+                "(below 1.00 beats naive).")
+    ev = rolling_origin_eval(s_fl.to_numpy())
+    rows = [{"method": m, **{f"h={h}": ev[m][h]["ratio_to_naive"] for h in ev[m]}} for m in ev]
+    st.dataframe(pd.DataFrame(rows), hide_index=True,
+                 alt="Forecast error as a ratio to the naive forecast, by method and horizon")
+    st.caption("If nothing beats naive, the honest advice is: prices move too randomly to time "
+               "the week; use the station comparison instead.")
 
 # ---------------------------------------------------------------- EDA
-with tab_eda:
+elif _selected == ":material/analytics: EDA":
     st.caption("What this tab answers: is the weekly price data clean and what does it look "
                "like? Check gaps, outliers and distributions before trusting any forecast.")
     st.subheader("Exploratory analysis of weekly gasoline prices")
@@ -632,50 +668,121 @@ with tab_eda:
         "Outlier treatment", ["keep", "interpolate"], default="keep", key="eda_treat",
         help="Price shocks can be real events; 'interpolate' replaces them by the average of "
              "neighbouring weeks.") or "keep"
-    if is_open(tab_eda):
+    if True:
         raw = series["florida"]
         clean, rep = treat_series(raw, z=z_thr, outliers=treat)
         d = series.copy()
         d["florida"] = clean
         d = d.interpolate(limit_direction="both")
+
+        # ---- 1. Data quality ------------------------------------------------
+        st.markdown("#### 1. Data quality")
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("Weeks", f"{len(d):,}", border=True)
         c2.metric("Missing weeks filled", rep["n_missing_filled"], border=True)
         c3.metric("Price shocks flagged", rep["n_outliers_flagged"], border=True)
         c4.metric("Latest Florida", f"${clean.iloc[-1]:.2f}", border=True)
         st.caption(f"Treatment: missing weeks by linear interpolation; outliers: {treat}. Mean "
-                   f"{rep['mean_before']:.3f} -> {rep['mean_after']:.3f}, SD "
-                   f"{rep['std_before']:.3f} -> {rep['std_after']:.3f} (before -> after).")
+                   f"{rep['mean_before']:.3f} → {rep['mean_after']:.3f}, SD "
+                   f"{rep['std_before']:.3f} → {rep['std_after']:.3f} (before → after).")
+
+        # ---- 2. Descriptive statistics --------------------------------------
+        st.markdown("#### 2. Descriptive statistics")
+        st.dataframe(d.describe().T.round(3), alt="Summary statistics of the weekly prices")
+        box_df = d.reset_index().melt(id_vars="period", var_name="Series",
+                                      value_name="Price ($/gal)")
+        box_df["Series"] = box_df["Series"].map({"florida": "Florida", "us": "U.S."})
+        st.plotly_chart(
+            px.box(box_df, x="Series", y="Price ($/gal)",
+                   title="Price distribution: Florida vs U.S.",
+                   color="Series", points="outliers"),
+            width="stretch", alt="Box plot comparing Florida and US price distributions")
+
+        # ---- 3. Outlier detection and treatment ----------------------------
+        st.markdown("#### 3. Outlier detection and treatment")
         comp = pd.DataFrame({"raw": raw, "treated": clean})
         st.line_chart(comp.tail(520), alt="Raw and treated Florida weekly price, last ten years")
-        st.dataframe(d.describe().T.round(3), alt="Summary statistics of the weekly prices")
+        st.caption("Flagged points are weeks where the week-on-week change exceeded "
+                   f"{z_thr}× the historical standard deviation of changes.")
+
+        # ---- 4. Correlation analysis ----------------------------------------
+        st.markdown("#### 4. Correlation analysis")
         ch = clean.diff().dropna()
         chg = d.diff().dropna()
         corr_d = chg.corr().loc["florida", "us"]
         lags = lagged_corr(d["florida"], d["us"], 8)
         best_lag = max(lags, key=lambda k: lags[k])
-        st.write(f"Correlation of weekly changes, Florida vs U.S.: {corr_d:.3f}. "
-                 f"Strongest lagged link: U.S. leads Florida by {best_lag} week(s) "
-                 f"(r = {lags[best_lag]:.3f}).")
-        st.plotly_chart(px.bar(x=list(lags), y=list(lags.values()),
-                               labels=dict(x="weeks U.S. leads Florida", y="corr of weekly changes"),
-                               title="Lead-lag correlation"), width="stretch",
-                        alt="Bar chart: correlation of weekly changes by lag in weeks")
-        st.plotly_chart(px.histogram(ch, nbins=60, title="Distribution of weekly changes ($/gal)"),
-                        width="stretch", alt="Histogram of weekly price changes in dollars per gallon")
+        col_corr, col_scatter = st.columns(2)
+        with col_corr:
+            st.plotly_chart(
+                px.bar(x=list(lags), y=list(lags.values()),
+                       labels=dict(x="weeks U.S. leads Florida",
+                                   y="corr of weekly changes"),
+                       title="Lead-lag correlation (Florida vs U.S.)"),
+                width="stretch",
+                alt="Bar chart: correlation of weekly changes by lag in weeks")
+        with col_scatter:
+            _x, _y = d["us"].to_numpy(), d["florida"].to_numpy()
+            _mask = np.isfinite(_x) & np.isfinite(_y)
+            _m, _b = np.polyfit(_x[_mask], _y[_mask], 1)
+            _fig_sc = px.scatter(d, x="us", y="florida",
+                                 labels=dict(us="U.S. price ($/gal)",
+                                             florida="Florida price ($/gal)"),
+                                 title="Florida vs U.S. price levels",
+                                 opacity=0.5)
+            _fig_sc.add_scatter(x=_x[_mask], y=_m * _x[_mask] + _b,
+                                mode="lines", name="OLS fit",
+                                line=dict(color="red", width=2))
+            st.plotly_chart(_fig_sc, width="stretch",
+                            alt="Scatter plot of Florida vs US weekly prices with OLS trendline")
+        st.plotly_chart(
+            px.histogram(ch, nbins=60,
+                         title="Distribution of weekly price changes ($/gal)"),
+            width="stretch",
+            alt="Histogram of weekly price changes in dollars per gallon")
         prices = [s["price"] for s in priced if s["price"]]
         if prices:
-            st.plotly_chart(px.histogram(prices, nbins=20, title="Station price spread on this route"),
-                            width="stretch", alt="Histogram of station prices on this route")
-            st.write(f"Spread: min ${min(prices):.2f}, max ${max(prices):.2f}, "
+            st.plotly_chart(
+                px.histogram(prices, nbins=20,
+                             title="Station price spread on this route"),
+                width="stretch",
+                alt="Histogram of station prices on this route")
+            st.write(f"Station spread: min ${min(prices):.2f}, max ${max(prices):.2f}, "
                      f"IQR ${np.subtract(*np.percentile(prices, [75, 25])):.2f}")
+
+        # ---- 5. Key insights ------------------------------------------------
+        st.markdown("#### 5. Key insights")
+        avg_52 = float(clean.iloc[-52:].mean()) if len(clean) >= 52 else float(clean.mean())
+        latest_fl = float(clean.iloc[-1])
+        vs_avg = "above" if latest_fl > avg_52 else "below"
+        gap_avg = abs(latest_fl - avg_52)
+        corr_str = ("strongly" if abs(corr_d) >= 0.7
+                    else "moderately" if abs(corr_d) >= 0.4 else "weakly")
+        st.info(
+            f"- The dataset covers **{len(d):,} weeks** of EIA weekly prices. "
+            + (f"**{rep['n_missing_filled']} missing week(s)** were filled by interpolation. "
+               if rep["n_missing_filled"] else "No missing weeks were found. ")
+            + f"\n- **{rep['n_outliers_flagged']} price shock(s)** were flagged at the "
+              f"current threshold (Z > {z_thr})"
+            + ("; they were replaced." if treat == "interpolate" else "; they were kept.")
+            + f"\n- Florida and U.S. weekly price changes are **{corr_str}ly correlated** "
+              f"(r = {corr_d:.2f})."
+            + f"\n- U.S. prices lead Florida by **{best_lag} week(s)** at the strongest lag "
+              f"(r = {lags[best_lag]:.2f})."
+            + f"\n- The latest Florida price (${latest_fl:.2f}/gal) is **${gap_avg:.2f} "
+              f"{vs_avg}** the 52-week average (${avg_52:.2f}/gal).",
+            icon=":material/lightbulb:")
+
+        # ---- AI summary -----------------------------------------------------
         ev_eda = rolling_origin_eval(clean.to_numpy())
-        best_m = min((m for m in ev_eda if m != "naive"), key=lambda m: ev_eda[m][1]["ratio_to_naive"])
+        best_m = min((m for m in ev_eda if m != "naive"),
+                     key=lambda m: ev_eda[m][1]["ratio_to_naive"])
         eda_facts = {"weeks": len(d), "n_missing_filled": rep["n_missing_filled"],
                      "n_outliers_flagged": rep["n_outliers_flagged"],
                      "latest_florida": round(float(clean.iloc[-1]), 2),
                      "corr_changes": round(float(corr_d), 2), "best_lag_weeks": best_lag,
-                     "best_method": best_m, "best_ratio": round(ev_eda[best_m][1]["ratio_to_naive"], 2)}
+                     "best_method": best_m,
+                     "best_ratio": round(ev_eda[best_m][1]["ratio_to_naive"], 2)}
         st.markdown("**AI summary of this analysis**")
         eda_llm = _llm_provider()
         if st.button("Summarize the EDA"):
@@ -686,18 +793,19 @@ with tab_eda:
             st.write(res["text"])
             st.caption(f"Source: {res['source']}"
                        + (" (no LLM key — set GROQ_API_KEY in .env for free access; "
-                          "template used instead)" if res["source"] == "template" and eda_llm is None else ""))
+                          "template used instead)"
+                          if res["source"] == "template" and eda_llm is None else ""))
         with st.expander("Facts the summary may use"):
             st.json(eda_facts)
 
 # ---------------------------------------------------------------- sensitivity
-with tab_sens:
+elif _selected == ":material/calculate: Sensitivity":
     st.caption("What this tab answers: how many extra miles of detour a given price gap is "
                "worth, at your mpg (Your car) and value of time (sidebar).")
     st.subheader("How far is a detour worth it?")
     st.write("Break-even extra miles for a price gap (columns, $/gal) and value of time "
              "(rows, $/h), using your gallons, mpg and speed.")
-    if is_open(tab_sens):
+    if True:
         ref = p_ref if p_ref else 3.6
         sens = sensitivity_table(gallons, ref, mpg, speed)
         df_s = pd.DataFrame(sens).T
@@ -709,7 +817,7 @@ with tab_sens:
                         alt="Heat map of break-even extra miles by price gap and value of time")
 
 # ---------------------------------------------------------------- AI explanation
-with tab_ai:
+elif _selected == ":material/smart_toy: AI":
     st.caption("What this tab answers: what the numbers mean in plain words. The text is "
                "checked against the calculation; press the button to generate it.")
     st.subheader("Plain-language explanation (numbers verified against the calculation)")

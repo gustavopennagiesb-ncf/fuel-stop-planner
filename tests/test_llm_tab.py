@@ -51,8 +51,11 @@ def click(app, label):
     return app
 
 
+AI_TAB = ":material/smart_toy: AI"
+
+
 def test_a_rejected_key_is_reported_on_the_explain_button(monkeypatch):
-    app = click(run_app(monkeypatch, key_works=False), "Explain this recommendation")
+    app = click(run_app(monkeypatch, key_works=False, open_tab=AI_TAB), "Explain this recommendation")
     assert any("401" in e.value for e in app.error)
     assert not app.exception
 
@@ -64,5 +67,5 @@ def test_a_rejected_key_is_reported_on_the_eda_summary(monkeypatch):
 
 
 def test_a_working_key_shows_no_error(monkeypatch):
-    app = click(run_app(monkeypatch, key_works=True), "Explain this recommendation")
+    app = click(run_app(monkeypatch, key_works=True, open_tab=AI_TAB), "Explain this recommendation")
     assert not app.error and not app.exception
