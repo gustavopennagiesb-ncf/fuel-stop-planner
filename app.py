@@ -28,7 +28,7 @@ from detour import (DEFAULTS, breakeven_miles, rank_stations, reference_price,
                     sensitivity_table)
 from forecast import lagged_corr, rolling_origin_eval, treat_series
 from gmap import build_map_html
-from llm import AnthropicProvider, ask, explain
+from llm import AnthropicProvider, GroqProvider, ask, explain
 from providers import fueleconomy
 from services import compute_detours, load_series, load_trip
 
@@ -44,6 +44,22 @@ if provider == "fixture" or not (config.GOOGLE_API_KEY and config.EIA_API_KEY):
     st.markdown(":orange-badge[:material/science: Synthetic test data] Prices, stations and the "
                 "route are made up. Set PROVIDER=google plus EIA_API_KEY and GOOGLE_API_KEY for "
                 "live data.")
+
+def _llm_provider():
+    """Return the best available LLM provider: Groq (free) → Anthropic → None (template).
+
+    Groq is preferred because it has a generous free tier and needs no credit card.
+    Set GROQ_API_KEY in .env to enable it; ANTHROPIC_API_KEY works as a fallback.
+    Without either key the app uses the deterministic template and says so.
+    """
+    g = GroqProvider()
+    if g.available():
+        return g
+    a = AnthropicProvider()
+    if a.available():
+        return a
+    return None
+
 
 @st.cache_data(show_spinner=False, ttl=86400)
 def fe_menu(kind, *args):
@@ -635,15 +651,16 @@ with tab_eda:
                      "corr_changes": round(float(corr_d), 2), "best_lag_weeks": best_lag,
                      "best_method": best_m, "best_ratio": round(ev_eda[best_m][1]["ratio_to_naive"], 2)}
         st.markdown("**AI summary of this analysis**")
-        eda_llm = AnthropicProvider()
+        eda_llm = _llm_provider()
         if st.button("Summarize the EDA"):
-            res = ask("eda", eda_facts, eda_llm if eda_llm.available() else None)
+            res = ask("eda", eda_facts, eda_llm)
             if res.get("error"):
                 st.error(f"The LLM could not be reached, so this is the template: "
                          f"{res['error']}", icon=":material/error:")
             st.write(res["text"])
             st.caption(f"Source: {res['source']}"
-                       + (" (no ANTHROPIC_API_KEY: template, not an LLM)" if res["source"] == "template" and not eda_llm.available() else ""))
+                       + (" (no LLM key — set GROQ_API_KEY in .env for free access; "
+                          "template used instead)" if res["source"] == "template" and eda_llm is None else ""))
         with st.expander("Facts the summary may use"):
             st.json(eda_facts)
 
@@ -771,10 +788,10 @@ with tab_ai:
                  "breakeven_miles": round(max(breakeven_miles(
                      gallons, gap, best["price"], mpg, vot, speed), 0.0), 1) if gap > 0 else 0.0,
                  "value_of_time": vot}
-        llm_provider = AnthropicProvider()
-        if not llm_provider.available():
-            st.caption("No ANTHROPIC_API_KEY: using the deterministic template instead of an LLM.")
-            llm_provider = None
+        llm_provider = _llm_provider()
+        if llm_provider is None:
+            st.caption("No LLM key found. Set GROQ_API_KEY in .env for free access (groq.com). "
+                       "Using the deterministic template instead.")
         if st.button("Explain this recommendation"):
             res = explain(facts, llm_provider)
             if res.get("error"):

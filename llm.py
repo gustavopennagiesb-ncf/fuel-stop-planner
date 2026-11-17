@@ -9,6 +9,8 @@ import re
 
 NUM = re.compile(r"-?\d+(?:[.,]\d+)?")
 MODEL = os.environ.get("LLM_MODEL", "claude-haiku-5-5")
+GROQ_MODEL = os.environ.get("GROQ_MODEL", "llama-3.1-8b-instant")
+GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 
 
 def _flatten(obj):
@@ -77,6 +79,42 @@ class TemplateProvider:
 
     def generate(self, facts: dict) -> str:
         return template_explanation(facts)
+
+
+class GroqProvider:
+    """LLM provider backed by Groq's free-tier API (OpenAI-compatible endpoint).
+
+    Uses `requests` only — no extra dependency. Reads GROQ_API_KEY from the environment.
+    Model default: llama-3.1-8b-instant (fast, free tier, good at structured output).
+    """
+    name = "groq"
+
+    def __init__(self, api_key=None, model=GROQ_MODEL):
+        self.api_key = api_key or os.environ.get("GROQ_API_KEY")
+        self.model = model
+
+    def available(self) -> bool:
+        return bool(self.api_key)
+
+    def complete(self, prompt: str, max_tokens: int = 250) -> str:
+        import requests as _req
+        resp = _req.post(
+            GROQ_API_URL,
+            headers={"Authorization": f"Bearer {self.api_key}",
+                     "Content-Type": "application/json"},
+            json={"model": self.model, "max_tokens": max_tokens,
+                  "messages": [{"role": "user", "content": prompt}]},
+            timeout=30,
+        )
+        resp.raise_for_status()
+        return resp.json()["choices"][0]["message"]["content"]
+
+    def generate(self, facts: dict) -> str:
+        return self.complete(
+            "Explain this fuel-stop recommendation to a driver in 3 short sentences. "
+            "Use ONLY numbers that appear in FACTS (you may round to 2 decimals). Do not "
+            "invent prices, stations or percentages. If net benefit is not positive, say "
+            f"not to detour.\nFACTS: {json.dumps(facts)}")
 
 
 class AnthropicProvider:
