@@ -45,9 +45,11 @@ def summary(rec):
                 f"after the detour ({best['extra_miles']:.1f} extra miles, "
                 f"{_minutes(best['extra_minutes'])}).")
     if rec["verdict"] == "skip":
+        nb = best["net_benefit"]
+        saving_clause = (f"costs ${-nb:.2f} to detour" if nb < 0
+                         else f"saves only ${nb:.2f}, below your minimum of ${rec['min_saving']:.2f}")
         return ("No detour pays off enough",
-                f"The best option saves only ${best['net_benefit']:.2f}, below your minimum of "
-                f"${rec['min_saving']:.2f}. Fill up at the first station on your route.")
+                f"The best option {saving_clause}. Fill up at the first station on your route.")
     return ("No station has a price yet",
             'Open "Edit prices" below and type the price of a station to get a recommendation.')
 
