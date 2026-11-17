@@ -87,15 +87,6 @@ In `google` mode (day-1 check passed: Places returns U.S. fuel prices):
 - `llm.py` provider interface, number validator, template fallback
 - `tests/` unit tests
 
-## Driver mode
-The Driver mode tab answers one question: how many miles can I drive before the tank hits my
-reserve? It shows a low, base and high case, each with approximate hours of work and orders. It
-does not predict orders and uses no DoorDash data. Its defaults are assumptions, not measured
-values: 15 miles per hour of work, 8 miles per order, a reserve of 15% of the tank (at least
-2 gal; Conservative uses the larger of 25% of the tank and the Standard reserve), and mpg factors of 0.85 (low) and 1.10 (high). Miles per hour,
-miles per order, tank level, reserve mode, tank size and mpg are editable in the UI; the mpg
-factors are constants in `driver.py`.
-
 ## Rules that shape the code
 - Google Places content may not be stored (only place IDs): fixtures are synthetic, and no
   recorded Google responses go in the repo.
