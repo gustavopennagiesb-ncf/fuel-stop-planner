@@ -13,13 +13,16 @@ showSidebarBorder = true
 greenColor = "#5BD48A"
 orangeColor = "#F5A453"
 redColor = "#F2777A"
-font = "Inter:https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+font = "Geist:https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&display=swap"
+codeFont = "Geist Mono:https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500&display=swap"
+baseFontSize = 15
 headingFont = "Space Grotesk:https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&display=swap"
 headingFontSizes = ["2.1rem", "1.45rem", "1.12rem", "1rem", "0.92rem", "0.85rem"]
-headingFontWeights = [700, 600, 600, 600, 600, 600]
+headingFontWeights = [700, 650, 600, 600, 600, 600]
 baseFontWeight = 400
 baseRadius = "0.6rem"
-metricValueFontSize = "1.7rem"
+metricValueFontSize = "1.65rem"
+metricValueFontWeight = 600
 
 [theme.sidebar]
 backgroundColor = "#0F1115"

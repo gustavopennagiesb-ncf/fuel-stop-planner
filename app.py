@@ -117,7 +117,7 @@ def slider_with_number(label, lo, hi, default, step, key, help=None):
         if v is not None:
             st.session_state[key] = min(hi, max(lo, float(v)))
 
-    st.markdown(label.replace("$", "\\$"), help=help)
+    st.markdown(f':small[{label.replace("$", "\\$")}]', help=help)
     left, right = st.columns([3, 2], vertical_alignment="center")
     with left:
         value = st.slider(label, lo, hi, step=step, key=key, help=help,
@@ -279,6 +279,8 @@ def _nav_click(item):
 
 
 _SIDEBAR_CSS = """<style>
+html {font-variant-numeric: tabular-nums;}
+h1, h2, h3 {letter-spacing: -0.012em;}
 .fs-brand {display: flex; align-items: center; gap: 0.7rem; margin: 0;}
 .fs-brand b {display: block; font-family: "Space Grotesk", sans-serif; font-weight: 700;
     font-size: 1.05rem; letter-spacing: 0.28em; line-height: 1.1;}
@@ -606,7 +608,8 @@ if _selected == ":material/local_gas_station: Where to stop":
             for col, alt in zip(st.columns(len(rec["alternatives"])), rec["alternatives"]):
                 with col.container(border=True, height="stretch"):
                     st.markdown(f"**{recommend.md_escape(alt['name'])}**")
-                    st.caption(f"${alt['price']:.2f}/gal · saves ${alt['net_benefit']:.2f} · "
+                    st.subheader(f"\\${alt['price']:.2f} :small[/gal]", anchor=False)
+                    st.caption(f"Saves \\${alt['net_benefit']:.2f} · "
                                f"{alt['extra_minutes']:.0f} min detour")
                     alt_pin = None
                     if live:
