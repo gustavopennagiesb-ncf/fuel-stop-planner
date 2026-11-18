@@ -293,7 +293,8 @@ h1, h2, h3 {letter-spacing: -0.012em;}
 .fs-sub {margin: 0.3rem 0 0 0; opacity: 0.7; font-size: 0.95rem;}
 .fs-status {font-size: 0.68rem; font-weight: 600; letter-spacing: 0.16em;
     text-transform: uppercase; opacity: 0.6; margin: 0.1rem 0 0.2rem 0;}
-.st-key-assistant_fab {position: fixed; right: 1.75rem; bottom: 1.5rem; z-index: 1000;
+/* bottom clears the avatar and badge Streamlit Cloud puts in the bottom-right corner */
+.st-key-assistant_fab {position: fixed; right: 1.75rem; bottom: 4.5rem; z-index: 1000;
     width: auto !important;}
 .st-key-assistant_fab button {border-radius: 999px !important; background: #6CB4FF !important;
     color: #0F1115 !important; border: none !important; font-weight: 600;
