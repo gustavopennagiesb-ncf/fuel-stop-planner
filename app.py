@@ -963,53 +963,90 @@ def assistant_facts():
             "best_net_benefit": round(best["net_benefit"], 2),
             "breakeven_miles": round(max(breakeven_miles(
                 gallons, gap, best["price"], mpg, vot, speed), 0.0), 1) if gap > 0 else 0.0,
-            "value_of_time": vot}
+            "value_of_time": vot,
+            # The decision is the app's, not the model's: it must state it, never re-derive it.
+            "verdict": ("the detour pays off: stop at the best station" if rec["verdict"] == "go"
+                        else "no detour pays off enough: fill up on your route")}
 
 
 def show_reply(msg):
+    """An answer, then how it was checked: share of numbers traced on the first try, attempts,
+    source. This is what makes a hallucination visible instead of hypothetical."""
     if msg.get("error"):
         st.error(f"The LLM could not be reached, so this is the template: {msg['error']}",
                  icon=":material/error:")
     st.markdown(recommend.md_escape(msg["text"]))
-    st.caption(f"Source: {msg['source']}" + (" · fell back to the template"
-                                             if msg.get("fallback_used") else "")
-               + " · numbers checked against the calculation")
+    if msg.get("fallback_used"):
+        badge = ":orange-badge[:material/rule: Numbers not traceable · template used]"
+    elif msg["source"] == "template":
+        badge = ":gray-badge[:material/description: Template answer]"
+    else:
+        rate = msg.get("traceable_first_try")
+        badge = f":green-badge[:material/verified: {(1.0 if rate is None else rate):.0%} of numbers traced]"
+    attempts = msg.get("attempts") or 0
+    detail = f"{msg['source']}" + (f" · {attempts} attempt{'s' if attempts != 1 else ''}"
+                                   if attempts else "")
+    st.markdown(f"{badge} :small[{detail}]")
 
+
+ASSISTANT_SUGGESTIONS = ["Explain this recommendation", "Is the detour worth my time?",
+                         "Why not the cheapest station?"]
+
+
+def assistant_turn(chat, text, facts, provider):
+    chat.append({"role": "user", "text": text})
+    reply = (explain(facts, provider) if text == ASSISTANT_SUGGESTIONS[0]
+             else ask("qa", facts, provider, question=text))
+    chat.append({"role": "assistant", **reply})
+
+
+AVATARS = {"user": ":material/person:", "assistant": ":material/smart_toy:"}
 
 with st.container(key="assistant_fab"):
     with st.popover("Assistant", icon=":material/smart_toy:"):
-        card_header("Fuel assistant", "Ask about this trip. Every number in an answer is "
-                    "checked against the app's calculation.", ":material/smart_toy:")
+        llm_provider = _llm_provider()
+        with st.container(horizontal=True, vertical_alignment="center"):
+            st.markdown("**Fuel assistant**", width="content")
+            st.markdown(":green-badge[:material/bolt: LLM on]" if llm_provider
+                        else ":gray-badge[:material/description: Template mode]", width="content")
+        st.caption("Every number in an answer is checked against the app's calculation.")
         if not ranked:
             st.info("Add at least one station price first.")
         else:
             facts = assistant_facts()
-            llm_provider = _llm_provider()
-            if llm_provider is None:
-                st.caption("No LLM key found (set GROQ_API_KEY in .env, free at groq.com), so "
-                           "answers come from a fixed template.")
             chat = st.session_state.setdefault("assistant_chat", [])
             log = st.container()
-            if st.button("Explain this recommendation", icon=":material/lightbulb:",
-                         width="stretch"):
-                chat.append({"role": "user", "text": "Explain this recommendation"})
-                chat.append({"role": "assistant", **explain(facts, llm_provider)})
+            with st.container(horizontal=True, gap="small"):
+                for suggestion in ASSISTANT_SUGGESTIONS:
+                    if st.button(suggestion, key=f"suggest_{suggestion}"):
+                        assistant_turn(chat, suggestion, facts, llm_provider)
             with st.form("assistant_form", clear_on_submit=True, border=False):
-                question = st.text_input("Your question",
-                                         placeholder="e.g. What if I buy 15 gallons?")
-                if st.form_submit_button("Ask", icon=":material/send:") and question.strip():
-                    chat.append({"role": "user", "text": question.strip()})
-                    chat.append({"role": "assistant",
-                                 **ask("qa", facts, llm_provider, question=question.strip())})
+                with st.container(horizontal=True, vertical_alignment="bottom", gap="small"):
+                    question = st.text_input("Your question", label_visibility="collapsed",
+                                             placeholder="Ask about this trip...")
+                    sent = st.form_submit_button("Send", icon=":material/send:",
+                                                 type="primary")
+                if sent and question.strip():
+                    assistant_turn(chat, question.strip(), facts, llm_provider)
             with log:
-                for msg in chat[-8:]:
-                    with st.chat_message(msg["role"]):
-                        if msg["role"] == "user":
-                            st.markdown(recommend.md_escape(msg["text"]))
-                        else:
-                            show_reply(msg)
-            if chat and st.button("Clear conversation", type="tertiary"):
-                chat.clear()
-                st.rerun()
-            with st.expander("Facts the assistant may use"):
-                st.json(facts)
+                if not chat:
+                    with st.chat_message("assistant", avatar=AVATARS["assistant"]):
+                        st.markdown("Hi! I can explain why the app picked this stop, or answer "
+                                    "a question about this trip. Pick a suggestion or type below.")
+                        if llm_provider is None:
+                            st.caption("No LLM key is set (GROQ_API_KEY, free at groq.com), so "
+                                       "answers come from a fixed template.")
+                else:
+                    with st.container(height=340, border=False):
+                        for msg in chat[-8:]:
+                            with st.chat_message(msg["role"], avatar=AVATARS[msg["role"]]):
+                                if msg["role"] == "user":
+                                    st.markdown(recommend.md_escape(msg["text"]))
+                                else:
+                                    show_reply(msg)
+            with st.container(horizontal=True, vertical_alignment="center"):
+                with st.expander("What the assistant knows", icon=":material/dataset:"):
+                    st.json(facts)
+                if chat and st.button("Clear", icon=":material/delete_sweep:", type="tertiary"):
+                    chat.clear()
+                    st.rerun()

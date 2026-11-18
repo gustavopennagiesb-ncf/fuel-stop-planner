@@ -66,3 +66,10 @@ def test_a_rejected_key_is_reported_on_the_eda_summary(monkeypatch):
 def test_a_working_key_shows_no_error(monkeypatch):
     app = click(run_app(monkeypatch, key_works=True, open_tab=None), "Explain this recommendation")
     assert not app.error and not app.exception
+
+
+def test_each_answer_reports_how_many_numbers_were_traced(monkeypatch):
+    """The report promises the share of traceable numbers on screen: it is what makes a
+    hallucination measurable, so the assistant must keep showing it."""
+    app = click(run_app(monkeypatch, key_works=True), "Explain this recommendation")
+    assert any("of numbers traced" in m.value for m in app.markdown)
