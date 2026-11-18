@@ -23,9 +23,10 @@ def at(monkeypatch):
     return app
 
 
-def test_every_tab_starts_with_what_it_answers(at):
-    intros = [c.value for c in at.caption if c.value.startswith(INTRO)]
-    assert len(intros) >= 1  # default section (Where to stop) has an intro
+def test_the_default_page_describes_the_route_comparison(at):
+    header = " ".join(h.proto.body for h in at.main.get("html"))
+    assert '<h1 class="fs-title">Fuel Stop Planner</h1>' in header
+    assert "Compare fuel stops along your route" in header
 
 
 def test_how_to_use_covers_every_tab(monkeypatch):
@@ -68,12 +69,11 @@ def test_glossary_defines_the_jargon(monkeypatch):
         assert term in text
 
 
-def test_the_help_points_to_where_the_settings_really_are(at):
-    """"Your car" and "Your trip" are cards on the page; only the fill-up and time settings are
-    in the sidebar."""
-    text = " ".join(m.value for m in at.markdown)
-    assert "Your car" in text and "Your trip" in text
-    assert "sidebar holds the trip" not in text
+def test_trip_and_car_controls_stay_in_the_main_page(at):
+    assert any("Your trip" in h.value for h in at.main.subheader)
+    assert any("Your car" in h.value for h in at.main.subheader)
+    assert at.main.slider(key="mpg")  # in the "Change car" popover of the Your car card
+    assert all("Your car" not in m.value for m in at.sidebar.markdown)
 
 
 def test_no_tab_sends_the_user_to_the_sidebar_for_the_mpg(monkeypatch):
@@ -88,8 +88,10 @@ def test_no_tab_sends_the_user_to_the_sidebar_for_the_mpg(monkeypatch):
     assert "mpg (Your car)" in mpg_intro
 
 
-def test_the_sidebar_header_names_what_the_sidebar_holds(at):
-    assert at.sidebar.header[0].value == "Fill-up and time"
+def test_the_sidebar_is_divided_into_labeled_sections(at):
+    sidebar_html = " ".join(h.proto.body for h in at.sidebar.get("html"))
+    for label in ("Navigate", "Fill-up", "Time", "Data"):
+        assert f'class="fs-label">{label}<' in sidebar_html
     assert {s.label for s in at.sidebar.slider} == {
         "Gallons to buy", "Value of your time ($/h)", "Average speed on detours (mph)"}
 

@@ -16,7 +16,6 @@ TABS = {
     "when": ":material/calendar_month: When to fill up",
     "sensitivity": ":material/calculate: Sensitivity",
     "eda": ":material/analytics: EDA",
-    "ai": ":material/smart_toy: AI",
     "help": ":material/help: How to use",
 }
 

@@ -30,10 +30,24 @@ def test_contrast_ratio_known_values():
     assert ui_style.contrast_ratio((255, 255, 255), (255, 255, 255)) == pytest.approx(1.0)
 
 
-def test_the_app_uses_a_light_theme():
+def test_the_app_uses_a_dark_theme():
     t = theme()
-    assert t["base"] == "light"
-    assert ui_style.contrast_ratio(rgb("#ffffff"), rgb(t["backgroundColor"])) < 1.2  # really light
+    assert t["base"] == "dark"
+    assert ui_style.contrast_ratio(rgb("#000000"), rgb(t["backgroundColor"])) < 1.3  # really dark
+
+
+def sidebar_backgrounds():
+    side = theme()["sidebar"]
+    return [side["backgroundColor"], side["secondaryBackgroundColor"]]
+
+
+@pytest.mark.parametrize("index", [0, 1])
+def test_sidebar_text_and_captions_are_readable(index):
+    t, bg = theme(), sidebar_backgrounds()[index]
+    assert ui_style.contrast_ratio(rgb(t["textColor"]), rgb(bg)) >= 7.0
+    assert ui_style.contrast_ratio(rgb(t["textColor"]), rgb(bg),
+                                   opacity=ui_style.STREAMLIT_CAPTION_OPACITY) >= 5.0
+    assert ui_style.contrast_ratio(rgb(t["primaryColor"]), rgb(bg)) >= 4.5
 
 
 @pytest.mark.parametrize("background", ["backgroundColor", "secondaryBackgroundColor"])

@@ -62,7 +62,8 @@ def make_app(monkeypatch, *, mode="fixture", stations=None, session=None, rename
 
 
 def links(app):
-    return {b.proto.label: b.proto for b in app.get("link_button")}
+    return {b.proto.label: b.proto for b in app.get("link_button")
+            if b.proto.label != "Open in Maps"}  # "Open in Maps": the other good options
 
 
 def query(url):
@@ -84,14 +85,14 @@ def test_a_worthwhile_station_is_the_headline_and_the_links_are_off(monkeypatch)
 def test_a_high_minimum_saving_turns_the_answer_into_skip(monkeypatch):
     app, _ = make_app(monkeypatch)
     app.number_input(key="min_saving").set_value(20.0).run()
-    assert not app.get("success") and not app.get("link_button")
+    assert not app.get("success") and not links(app)
     assert any(i.proto.title == "No detour pays off enough" for i in app.get("info"))
     assert not app.exception
 
 
 def test_other_good_options_are_listed_when_there_are_any(monkeypatch):
     app, _ = make_app(monkeypatch)
-    assert any("Other good options" in m.value for m in app.markdown)
+    assert any("Other good options" in h.value for h in app.subheader)
 
 
 def test_no_stations_gets_a_clear_message_not_a_crash(monkeypatch):
@@ -407,3 +408,12 @@ def test_no_priced_station_shows_no_insight_panel(monkeypatch):
     app, _ = make_app(monkeypatch, stations=unpriced)
     assert not [e for e in app.expander if e.label == INSIGHT]
     assert not app.exception
+
+
+def test_every_suggested_station_links_to_its_own_place(monkeypatch):
+    app, _ = make_app(monkeypatch, mode="google")
+    alt_links = [b.proto for b in app.get("link_button") if b.proto.label == "Open in Maps"]
+    assert alt_links, "the other good options have no map link"
+    ids = [query(b.url)["query_place_id"][0] for b in alt_links]
+    assert all(not b.disabled for b in alt_links)
+    assert len(set(ids)) == len(ids)

@@ -1,8 +1,8 @@
 """Small UI tweaks and the arithmetic that justifies them. No Streamlit import.
 
-The theme itself lives in .streamlit/config.toml (a neutral slate-and-navy look); tests/test_ui_style.py reads
+The theme itself lives in .streamlit/config.toml (a dark slate look with a separate sidebar palette); tests/test_ui_style.py reads
 its colors and checks WCAG AA contrast with contrast_ratio(). Streamlit draws captions at opacity
-0.6 (STREAMLIT_CAPTION_OPACITY), so the text color is chosen dark enough for captions to pass.
+0.6 (STREAMLIT_CAPTION_OPACITY), so the text color is chosen light enough for captions to pass.
 """
 
 STREAMLIT_CAPTION_OPACITY = 0.6  # how Streamlit draws captions by default

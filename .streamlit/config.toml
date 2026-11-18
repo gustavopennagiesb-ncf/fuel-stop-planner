@@ -1,13 +1,26 @@
-# App theme: a neutral, professional look (slate and navy). Text/background pairs are checked for
-# WCAG AA contrast by tests/test_ui_style.py, so a palette change that makes text unreadable fails
-# the tests.
+# App theme: a dark "mission control" look (slate, thin borders, one blue accent). Text/background
+# pairs, including the sidebar's own palette, are checked for WCAG AA contrast by
+# tests/test_ui_style.py, so a palette change that makes text unreadable fails the tests.
 [theme]
-base = "light"
-primaryColor = "#1E3A8A"
-backgroundColor = "#F8FAFC"
-secondaryBackgroundColor = "#EEF2F7"
-textColor = "#020617"
-greenColor = "#166534"
-orangeColor = "#9A4B00"
-redColor = "#B3261E"
-metricValueFontSize = "1.8rem"
+base = "dark"
+primaryColor = "#6CB4FF"
+backgroundColor = "#14171C"
+secondaryBackgroundColor = "#1E2229"
+textColor = "#E6E9EF"
+borderColor = "#2B3039"
+showWidgetBorder = true
+showSidebarBorder = true
+greenColor = "#5BD48A"
+orangeColor = "#F5A453"
+redColor = "#F2777A"
+font = "Inter:https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+headingFont = "Space Grotesk:https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&display=swap"
+headingFontSizes = ["2.1rem", "1.45rem", "1.12rem", "1rem", "0.92rem", "0.85rem"]
+headingFontWeights = [700, 600, 600, 600, 600, 600]
+baseFontWeight = 400
+baseRadius = "0.6rem"
+metricValueFontSize = "1.7rem"
+
+[theme.sidebar]
+backgroundColor = "#0F1115"
+secondaryBackgroundColor = "#1A1D23"
