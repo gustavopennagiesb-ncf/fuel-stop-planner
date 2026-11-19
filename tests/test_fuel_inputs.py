@@ -55,3 +55,41 @@ def test_no_toggle_when_fuel_is_not_set(monkeypatch):
     app = make_app(monkeypatch)
     assert len(app.toggle) == 0
     assert not app.slider(key="gallons").disabled
+
+
+# --- tank estimate from the EPA size class -------------------------------------------------
+import pytest
+import streamlit as st
+
+import fuelplan
+from tests.test_car_lookup import CAR, fake_get_for, pick_car
+
+PICKUP = {**CAR, "VClass": "Standard Pickup Trucks 4WD"}
+
+
+@pytest.fixture
+def fresh_cache():
+    st.cache_data.clear()
+    yield
+    st.cache_data.clear()
+
+
+def test_picking_a_car_estimates_the_tank_from_its_size_class(monkeypatch, fresh_cache):
+    monkeypatch.setattr(fueleconomy, "_get", fake_get_for(PICKUP))
+    app = AppTest.from_file(str(APP), default_timeout=30)
+    app.run()
+    pick_car(app)
+    expected = fuelplan.tank_for_class(PICKUP["VClass"])
+    assert expected > 13.0
+    assert app.number_input(key="tank").value == expected
+    assert any("Estimated from the EPA size class" in c.value for c in app.caption)
+
+
+def test_a_hand_edited_tank_survives_later_reruns(monkeypatch, fresh_cache):
+    monkeypatch.setattr(fueleconomy, "_get", fake_get_for(PICKUP))
+    app = AppTest.from_file(str(APP), default_timeout=30)
+    app.run()
+    pick_car(app)
+    app.number_input(key="tank").set_value(31.0).run()
+    app.sidebar.slider(key="gallons").set_value(12.0).run()
+    assert app.number_input(key="tank").value == 31.0
