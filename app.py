@@ -1,5 +1,6 @@
 """Streamlit app: when and where to fill up, with detour break-even and a validated LLM
 explanation. Runs without any key in fixture mode (synthetic data, clearly labelled)."""
+import base64
 import html
 import time
 
@@ -38,9 +39,27 @@ st.set_page_config(page_title="Fuel Stop Planner", page_icon=":material/local_ga
 
 
 
+def logo_svg(size):
+    """The app's mark: a map pin with a fuel drop inside."""
+    svg = (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="{size}" '
+           f'height="{size}"><defs><linearGradient id="g" x1="0" y1="0" x2="1" '
+           f'y2="1"><stop offset="0" stop-color="#9CD0FF"/><stop offset="1" '
+           f'stop-color="#3B82F6"/></linearGradient></defs>'
+           f'<rect width="32" height="32" rx="9" fill="url(#g)"/>'
+           '<path d="M16 6.2c-4.1 0-7.2 3.1-7.2 7.1 0 5.2 7.2 12.5 7.2 12.5s7.2-7.3 7.2-12.5'
+           'c0-4-3.1-7.1-7.2-7.1z" fill="#0F1115"/>'
+           '<path d="M16 9.4c-1 1.4-2.7 3.4-2.7 4.8a2.7 2.7 0 0 0 5.4 0c0-1.4-1.7-3.4-2.7-4.8z" '
+           'fill="#9CD0FF"/></svg>')
+    # st.html strips inline <svg>, so the mark goes in as an image.
+    data = base64.b64encode(svg.encode()).decode()
+    return (f'<img class="fs-mark" src="data:image/svg+xml;base64,{data}" width="{size}" '
+            f'height="{size}" alt="">')
+
+
 head_left, head_right = st.columns([3, 2], vertical_alignment="bottom")
-head_left.html('<div class="fs-hero"><h1 class="fs-title">Fuel Stop Planner</h1><p class="fs-sub">'
-               'Compare fuel stops along your route, including the cost of the detour.</p></div>')
+head_left.html('<div class="fs-hero">' + logo_svg(46) + '<div><h1 class="fs-title">Fuel Stop '
+               'Planner</h1><p class="fs-sub">Compare fuel stops along your route, including the '
+               'cost of the detour.</p></div></div>')
 status_line = head_right.empty()  # filled once the trip is loaded
 
 provider = config.PROVIDER
@@ -278,11 +297,13 @@ def _nav_click(item):
 _SIDEBAR_CSS = """<style>
 html {font-variant-numeric: tabular-nums;}
 h1, h2, h3 {letter-spacing: -0.012em;}
-.fs-brand {font-family: "Space Grotesk", sans-serif; font-weight: 700; font-size: 1.15rem;
-    letter-spacing: 0.3em; margin: 0;}
-.fs-brand span {font-weight: 600; font-size: 0.6rem; letter-spacing: 0.22em; opacity: 0.55;
-    margin-left: 0.5rem; vertical-align: middle;}
-.fs-hero {margin: 0.25rem 0 0.2rem 0;}
+.fs-brand {display: flex; align-items: center; gap: 0.7rem; margin: 0;}
+.fs-brand b {display: block; font-family: "Space Grotesk", sans-serif; font-weight: 700;
+    font-size: 1.05rem; letter-spacing: 0.28em; line-height: 1.1;}
+.fs-brand small {display: block; font-weight: 600; font-size: 0.58rem; letter-spacing: 0.24em;
+    opacity: 0.55; margin-top: 0.2rem;}
+.fs-hero {display: flex; align-items: center; gap: 1rem; margin: 0.25rem 0 0.2rem 0;}
+.fs-mark {flex-shrink: 0; filter: drop-shadow(0 6px 18px rgba(59, 130, 246, 0.35));}
 .fs-title {font-family: "Space Grotesk", sans-serif; font-size: 2.1rem; font-weight: 700;
     letter-spacing: -0.02em; line-height: 1.1; margin: 0; padding: 0;}
 .fs-sub {margin: 0.35rem 0 0 0; opacity: 0.7; font-size: 0.95rem;}
@@ -328,7 +349,8 @@ with st.sidebar:
     _current_nav = st.session_state["main_tabs"]
     _active_key = "_nav_" + _current_nav.split(": ", 1)[1].replace(" ", "_")
     st.html(_SIDEBAR_CSS.replace("ACTIVE", _active_key))
-    st.html('<p class="fs-brand">FUEL STOP<span>ROUTE PLANNER</span></p>')
+    st.html('<div class="fs-brand">' + logo_svg(34)
+            + '<div><b>FUEL STOP</b><small>ROUTE PLANNER</small></div></div>')
 
     sidebar_label("Navigate")
     with st.container(key="nav_container", gap=None):
