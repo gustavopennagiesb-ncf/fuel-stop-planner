@@ -19,6 +19,7 @@ load_dotenv()
 load_secrets()
 
 import config  # noqa: E402
+import fuelplan
 import insight
 import location
 import places_autocomplete
@@ -105,7 +106,7 @@ def car_lookup():
     return fe_vehicle(versions[label]) if label else None
 
 
-def slider_with_number(label, lo, hi, default, step, key, help=None):
+def slider_with_number(label, lo, hi, default, step, key, help=None, disabled: bool = False):
     """A slider plus a box to type the exact value. The slider's own session-state `key` is the
     value everyone reads; the box (`{key}_num`) mirrors it and, when typed into, writes back to
     it (clamped to the slider's range). Setting either from elsewhere, e.g. the car lookup
@@ -122,15 +123,16 @@ def slider_with_number(label, lo, hi, default, step, key, help=None):
     left, right = st.columns([3, 2], vertical_alignment="center")
     with left:
         value = st.slider(label, lo, hi, step=step, key=key, help=help,
-                          label_visibility="collapsed")
+                          label_visibility="collapsed", disabled=disabled)
     st.session_state[num_key] = value
     with right:
         st.number_input(f"{label}: exact value", lo, hi, step=step, key=num_key,
-                        on_change=typed, label_visibility="collapsed")
+                        on_change=typed, label_visibility="collapsed", disabled=disabled)
     return value
 
 
 st.session_state.setdefault("mpg", DEFAULTS["mpg"])
+GAUGE_LEVELS = ["E", "1/8", "1/4", "3/8", "1/2", "5/8", "3/4", "7/8", "F"]
 
 
 def card_header(title, description, icon=None):
@@ -256,15 +258,36 @@ with strip_row.popover("Pick your car", icon=":material/directions_car:"):
         if looked_up and st.session_state.get("mpg_applied") != (car["id"], kind):
             st.session_state["mpg"] = min(60.0, max(10.0, round(looked_up * 2) / 2))
             st.session_state["mpg_applied"] = (car["id"], kind)
+        if car.get("vclass") and st.session_state.get("tank_applied") != car["id"]:
+            st.session_state["tank"] = fuelplan.tank_for_class(car["vclass"])
+            st.session_state["tank_applied"] = car["id"]
         st.caption(f"{car['label']}: city {car['city']}, combined {car['combined']}, "
                    f"highway {car['highway']} mpg (EPA label values; real mileage varies).")
     mpg = slider_with_number("Fuel economy (mpg)", 10.0, 60.0, DEFAULTS["mpg"], 0.5, "mpg")
     tank = st.number_input("Tank size (gallons)", 5.0, 40.0, 13.0, 0.5, key="tank")
+    if car and car.get("vclass") and st.session_state.get("tank_applied") == car["id"]:
+        st.caption(f"Estimated from the EPA size class ({car['vclass']}); check your manual.")
     st.caption(f"About {tank * mpg:.0f} miles on a full tank at this mpg.")
     fuel_grade = st.segmented_control(
         "Fuel grade", ["Regular", "Midgrade", "Premium", "Diesel"],
         default="Regular", key="fuel_grade",
         help="Filters station prices to this grade. Regular = 87 octane.")
+with strip_row.popover("How much fuel do you have?", icon=":material/local_gas_station:"):
+    fuel_input_mode = st.segmented_control(
+        "How do you know?", ["Fuel gauge", "Miles left"], key="fuel_input_mode")
+    fuel_mode = None
+    fuel_value = None
+    if fuel_input_mode == "Fuel gauge":
+        gauge_label = st.select_slider("Fuel gauge", options=GAUGE_LEVELS,
+                                       value="1/2", key="fuel_level_eighths")
+        fuel_mode, fuel_value = "gauge", GAUGE_LEVELS.index(gauge_label)
+    elif fuel_input_mode == "Miles left":
+        fuel_value = st.number_input("Miles until the reserve light", 0.0, 900.0, 50.0, 5.0,
+                                     key="fuel_miles_left")
+        fuel_mode = "miles"
+    else:
+        st.caption("Optional. Tell the app how much fuel you have and it can plan how much "
+                   "to buy.")
 
 
 def chip(label, value):
@@ -278,6 +301,9 @@ trip_chips.html('<div class="fs-chips">'
                 + chip("Route", f'{_trip_labels["origin"]["label"]} → '
                                 f'{_trip_labels["destination"]["label"]}')
                 + chip("Car", f"{mpg:.1f} mpg · {tank:.0f} gal tank")
+                + chip("Fuel now", "Not set" if fuel_mode is None else
+                       f"{gauge_label} tank" if fuel_mode == "gauge" else
+                       f"{fuel_value:.0f} mi to reserve")
                 + chip("Fuel", fuel_grade or "Regular")
                 + chip("Corridor", f"{buffer_km:g} km each side") + "</div>")
 
@@ -367,11 +393,16 @@ with st.sidebar:
             )
 
     sidebar_label("Fill-up")
+    gallons_by_hand = True
+    if fuel_mode is not None:
+        gallons_by_hand = st.toggle("Set gallons by hand", key="gallons_manual",
+                                    help="Off: the app works out how much to buy from your "
+                                         "fuel level.")
     gallons = slider_with_number(
         "Gallons to buy", 3.0, 25.0, DEFAULTS["gallons"], 0.5, "gallons",
         help="How much fuel you plan to put in at the stop. Bigger fills make a price gap worth "
              "more. For example, a 10 cent/gal gap on 12 gallons saves $1.20 before the detour "
-             "costs.")
+             "costs.", disabled=not gallons_by_hand)
 
     sidebar_label("Time")
     vot = slider_with_number(
