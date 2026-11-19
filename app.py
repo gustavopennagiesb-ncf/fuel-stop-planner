@@ -512,10 +512,11 @@ if fuel_mode is not None and not gallons_by_hand and tmiles > 0:
 ranked = rank_stations(detoured, p_ref, gallons_arg, mpg, vot, speed)
 rec = recommend.recommend(ranked, _min_saving_val,
                           stop_needed=None if fplan is None else fplan["stop_needed"])
-# The single gallons figure the rest of the app reads (Sensitivity, flip point, AI facts, slider).
-_app_chose = (fplan is not None and rec["best"] is not None
-              and rec["verdict"] in ("go", "no_stop"))
-gallons_used = float(rec["best"]["gallons"]) if _app_chose else _gallons_slider
+# The single gallons figure the rest of the app reads (Sensitivity, flip point, AI facts, slider):
+# under a plan, the best-ranked station's own gallons for every verdict, so the facts and the
+# flip sentence describe the same fill as its net benefit; the slider only when nothing ranks.
+_app_chose = fplan is not None and bool(ranked)
+gallons_used = float(ranked[0]["gallons"]) if _app_chose else _gallons_slider
 with fill_slot:
     if _app_chose:
         st.session_state["gallons"] = min(25.0, max(3.0, gallons_used))
@@ -686,8 +687,10 @@ if _selected == ":material/local_gas_station: Where to stop":
                         st.warning("No stations were listed within the search corridor. Widen "
                                    "the corridor under Where are you going? and press Find stations.",
                                    title="No stations found near this route")
-                    elif (fplan is not None and fplan["stop_needed"]
+                    elif (fplan is not None and fplan["stop_needed"] and fplan["per_station"]
                           and not any(v["reachable"] for v in fplan["per_station"].values())):
+                        # per_station holds priced stations only: with none priced, the
+                        # "No station has a price yet" prompt below is the true answer.
                         st.warning("None of the listed stations is reachable before your "
                                    "reserve: fill up at the first station you pass.")
                     else:

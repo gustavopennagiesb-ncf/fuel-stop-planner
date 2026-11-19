@@ -422,3 +422,35 @@ def test_every_suggested_station_links_to_its_own_place(monkeypatch):
     ids = [query(b.url)["query_place_id"][0] for b in alt_links]
     assert all(not b.disabled for b in alt_links)
     assert len(set(ids)) == len(ids)
+
+
+# --- fuel plan: priced-station guard and one gallons figure (Task 7 fix) -------------------
+def test_stop_needed_with_no_priced_station_asks_for_a_price(monkeypatch):
+    trip = services.load_trip(None, None, 3000, provider="fixture")
+    unpriced = [{**s, "price": None} for s in trip["stations"]]
+    app, _ = make_app(monkeypatch, stations=unpriced,
+                      session={"fuel_input_mode": "Fuel gauge", "fuel_level_eighths": "1/4"})
+    assert not app.exception
+    assert any(w.proto.title == "No station has a price yet" for w in app.get("warning"))
+    assert not any("reachable" in w.value for w in app.warning)
+
+
+def test_skip_under_a_plan_uses_the_best_ranked_stations_gallons(monkeypatch):
+    import driver
+    import fuelplan
+    from detour import DEFAULTS, rank_stations, reference_price
+    trip = services.load_trip(None, None, 3000, provider="fixture")
+    stations = services.compute_detours(trip)  # fixture mode: the stations unchanged
+    p_ref = reference_price(stations)
+    reserve = driver.reserve_gallons(13.0, "standard")
+    fuel = fuelplan.fuel_on_board("miles", 30.0, 13.0, DEFAULTS["mpg"], reserve)
+    fplan = fuelplan.plan(stations, trip["path"], fuel, 13.0, DEFAULTS["mpg"], reserve, p_ref)
+    g = {k: v["gallons"] for k, v in fplan["per_station"].items() if v["reachable"]}
+    best = rank_stations([s for s in stations if s["id"] in g], p_ref, g, DEFAULTS["mpg"],
+                         DEFAULTS["value_of_time"], DEFAULTS["speed_mph"])[0]
+    app, _ = make_app(monkeypatch, session={"fuel_input_mode": "Miles left",
+                                            "fuel_miles_left": 30.0})
+    assert not headline(app)  # a skip: no stop clears the minimum saving
+    assert best["gallons"] != DEFAULTS["gallons"]
+    assert app.slider(key="gallons").value == min(25.0, max(3.0, best["gallons"]))
+    assert any(f"At {best['gallons']:g} gallons" in m.value for m in app.markdown)
