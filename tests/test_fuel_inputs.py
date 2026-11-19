@@ -172,3 +172,68 @@ def test_no_fuel_level_keeps_todays_headline(monkeypatch):
     app = make_app(monkeypatch)
     assert not any(h.value == "No stop needed" for h in app.header)
     assert not any(" · buy " in h.value for h in app.header)
+
+
+# --- final review fixes ----------------------------------------------------------------------
+import llm
+
+
+def _no_llm(monkeypatch):
+    monkeypatch.setattr(llm.GroqProvider, "available", lambda self: False)
+    monkeypatch.setattr(llm.AnthropicProvider, "available", lambda self: False)
+
+
+def test_empty_tank_set_by_hand_still_keeps_the_plan(monkeypatch):
+    app = make_app(monkeypatch, session={"fuel_input_mode": "Fuel gauge", "fuel_level_eighths": "E",
+                                         "gallons_manual": True})
+    assert any("reachable" in w.value for w in app.warning) and not app.exception
+    assert not any(h.value.startswith("Fill up at ") for h in app.header)
+
+
+def test_full_tank_set_by_hand_still_needs_no_stop(monkeypatch):
+    app = make_app(monkeypatch, session={"fuel_input_mode": "Fuel gauge", "fuel_level_eighths": "F",
+                                         "gallons_manual": True})
+    assert any(h.value == "No stop needed" for h in app.header)
+
+
+def test_set_by_hand_buys_the_sliders_gallons(monkeypatch):
+    app = make_app(monkeypatch, session={"fuel_input_mode": "Miles left", "fuel_miles_left": 80.0,
+                                         "gallons_manual": True, "gallons": 7.0,
+                                         "gallons_num": 7.0})
+    title = next(h.value for h in app.header if h.value.startswith("Fill up at "))
+    assert title.endswith(" · buy 7.0 gal")
+    assert not app.slider(key="gallons").disabled and app.slider(key="gallons").value == 7.0
+
+
+def test_stop_needed_skip_names_the_nearest_reachable_station(monkeypatch):
+    app = make_app(monkeypatch, session={"fuel_input_mode": "Miles left", "fuel_miles_left": 30.0})
+    info = [i for i in app.info if "No detour pays off enough" in i.value]
+    assert info, [i.value for i in app.info]
+    assert "take the nearest reachable station:" in info[0].value
+    assert " · buy " in info[0].value and " gal" in info[0].value
+    assert info[0].proto.title == "Stop for fuel"
+
+
+def test_assistant_states_the_best_stations_gallons(monkeypatch):
+    _no_llm(monkeypatch)
+    app = make_app(monkeypatch, session={"fuel_input_mode": "Miles left", "fuel_miles_left": 80.0})
+    title = next(h.value for h in app.header if h.value.startswith("Fill up at "))
+    bought = title.rsplit(" · buy ", 1)[1].split()[0]
+    next(b for b in app.button if b.label == "Explain this recommendation").click().run()
+    text = " ".join(m.value for m in app.markdown if "gallons" in m.value)
+    assert f"for {float(bought):g} gallons" in text, text
+
+
+def test_assistant_under_no_stop_says_no_stop(monkeypatch):
+    _no_llm(monkeypatch)
+    app = make_app(monkeypatch, session={"fuel_input_mode": "Fuel gauge", "fuel_level_eighths": "F"})
+    next(b for b in app.button if b.label == "Explain this recommendation").click().run()
+    text = " ".join(m.value for m in app.markdown)
+    assert "No stop needed" in text and "Stop at " not in text
+
+
+def test_assistant_with_nothing_reachable_says_so(monkeypatch):
+    app = make_app(monkeypatch, session={"fuel_input_mode": "Fuel gauge", "fuel_level_eighths": "E"})
+    infos = [i.value for i in app.info]
+    assert any("None of the listed stations is reachable" in v for v in infos), infos
+    assert not any("Add at least one station price first" in v for v in infos)

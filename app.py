@@ -497,26 +497,36 @@ if p_ref is None:
 detoured = compute_detours({**trip, "stations": priced})
 tmiles = fuelplan.trip_miles(trip["path"]) if trip.get("path") else 0.0
 _gallons_slider = float(st.session_state.get("gallons", DEFAULTS["gallons"]))
-# With a fuel level set (and gallons not set by hand), each station gets its own gallons from the
-# plan, and unreachable stations are dropped before ranking (never ranked with 0 gallons). The
+# With a fuel level set, the plan always runs: unreachable stations are dropped before ranking
+# (never ranked with 0 gallons), and it decides stop / no stop. Each station gets its own gallons
+# from the plan, unless "Set gallons by hand" is on: then the slider's one number is used. The
 # headline, the options and the insight panel all read the same `detoured` and `gallons_arg`.
 fplan = None
 gallons_arg = _gallons_slider
-if fuel_mode is not None and not gallons_by_hand and tmiles > 0:
+if fuel_mode is not None and tmiles > 0:
     _reserve = driver.reserve_gallons(tank, "standard")
     _fuel_gal = fuelplan.fuel_on_board(fuel_mode, fuel_value, tank, mpg, _reserve)
     fplan = fuelplan.plan(detoured, trip["path"], _fuel_gal, tank, mpg, _reserve, p_ref)
-    gallons_arg = {sid: v["gallons"] for sid, v in fplan["per_station"].items()
-                   if v["reachable"]}
-    detoured = [s for s in detoured if s["id"] in gallons_arg]
+    _reach = {sid: v["gallons"] for sid, v in fplan["per_station"].items() if v["reachable"]}
+    detoured = [s for s in detoured if s["id"] in _reach]
+    if not gallons_by_hand:
+        gallons_arg = _reach
 ranked = rank_stations(detoured, p_ref, gallons_arg, mpg, vot, speed)
 rec = recommend.recommend(ranked, _min_saving_val,
                           stop_needed=None if fplan is None else fplan["stop_needed"])
 # The single gallons figure the rest of the app reads (Sensitivity, flip point, AI facts, slider):
 # under a plan, the best-ranked station's own gallons for every verdict, so the facts and the
 # flip sentence describe the same fill as its net benefit; the slider only when nothing ranks.
-_app_chose = fplan is not None and bool(ranked)
+_app_chose = fplan is not None and bool(ranked) and not gallons_by_hand
 gallons_used = float(ranked[0]["gallons"]) if _app_chose else _gallons_slider
+# Under a plan with a stop needed, a skip names the reachable station reached first along the
+# route (most fuel left on arrival there; ties: the shorter detour).
+_nearest = (min(ranked, key=lambda s: (-fplan["per_station"][s["id"]]["fuel_at_station"],
+                                       s["extra_miles"]))
+            if fplan is not None and fplan["stop_needed"] and ranked else None)
+# Under a plan, every priced station unreachable before the reserve (stop needed or not).
+_none_reachable = bool(fplan is not None and fplan["per_station"]
+                       and not any(v["reachable"] for v in fplan["per_station"].values()))
 with fill_slot:
     if _app_chose:
         st.session_state["gallons"] = min(25.0, max(3.0, gallons_used))
@@ -694,7 +704,7 @@ if _selected == ":material/local_gas_station: Where to stop":
                         st.warning("None of the listed stations is reachable before your "
                                    "reserve: fill up at the first station you pass.")
                     else:
-                        title, body = recommend.summary(rec)
+                        title, body = recommend.summary(rec, nearest=_nearest)
                         if rec["verdict"] == "skip":
                             st.info(body, title=title, icon=":material/info:")
                         else:
@@ -1182,7 +1192,10 @@ with st.container(key="assistant_fab"):
             st.markdown(":green-badge[:material/bolt: LLM on]" if llm_provider
                         else ":gray-badge[:material/description: Template mode]", width="content")
         st.caption("Every number in an answer is checked against the app's calculation.")
-        if not ranked:
+        if not ranked and _none_reachable:
+            st.info("None of the listed stations is reachable before your reserve, so there is "
+                    "nothing to explain yet.")
+        elif not ranked:
             st.info("Add at least one station price first.")
         else:
             facts = assistant_facts()
