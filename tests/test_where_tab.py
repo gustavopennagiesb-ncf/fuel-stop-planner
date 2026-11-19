@@ -70,12 +70,17 @@ def query(url):
     return parse_qs(urlsplit(url).query)
 
 
+def headline(app):
+    """The recommended stop's title: the heading of the green answer card."""
+    return [h.value for h in app.header if h.value.startswith("Fill up at ")]
+
+
 # --------------------------------------------------------------------- synthetic mode
 def test_a_worthwhile_station_is_the_headline_and_the_links_are_off(monkeypatch):
     app, _ = make_app(monkeypatch)
-    success = app.get("success")
-    assert len(success) == 1 and success[0].proto.title.startswith("Fill up at ")
-    assert "saves about $" in success[0].proto.body
+    assert len(headline(app)) == 1
+    saved = next(m for m in app.metric if m.label == "You save")
+    assert saved.value.startswith("$")
     pair = links(app)
     assert set(pair) == {"Open in Google Maps", "Navigate via this station"}
     assert all(p.disabled for p in pair.values())
@@ -85,7 +90,7 @@ def test_a_worthwhile_station_is_the_headline_and_the_links_are_off(monkeypatch)
 def test_a_high_minimum_saving_turns_the_answer_into_skip(monkeypatch):
     app, _ = make_app(monkeypatch)
     app.number_input(key="min_saving").set_value(20.0).run()
-    assert not app.get("success") and not links(app)
+    assert not headline(app) and not links(app)
     assert any(i.proto.title == "No detour pays off enough" for i in app.get("info"))
     assert not app.exception
 
@@ -98,7 +103,7 @@ def test_other_good_options_are_listed_when_there_are_any(monkeypatch):
 def test_no_stations_gets_a_clear_message_not_a_crash(monkeypatch):
     app, _ = make_app(monkeypatch, stations=[])
     assert any(w.proto.title == "No stations found near this route" for w in app.get("warning"))
-    assert not app.get("success") and not app.exception
+    assert not headline(app) and not app.exception
 
 
 def test_no_priced_station_asks_for_a_price(monkeypatch):
@@ -130,7 +135,7 @@ def test_a_location_origin_goes_into_the_navigation_link_as_coordinates(monkeypa
 
 def test_a_hostile_station_name_is_escaped_in_the_headline(monkeypatch):
     app, _ = make_app(monkeypatch, mode="google", rename_best="**x**[a](http://evil)$y$")
-    title = app.get("success")[0].proto.title
+    title = headline(app)[0]
     assert title == "Fill up at \\*\\*x\\*\\*\\[a\\]\\(http://evil\\)\\$y\\$"
     assert "evil" not in " ".join(links(app)[k].url for k in links(app))  # names never reach URLs
 
@@ -179,7 +184,7 @@ def crafted():
 
 def test_the_cheapest_price_is_shown_even_when_a_nearer_stop_saves_more(monkeypatch):
     app, _ = make_app(monkeypatch, stations=crafted())
-    assert app.get("success")[0].proto.title == "Fill up at Near 1"
+    assert headline(app) == ["Fill up at Near 1"]
     text = " ".join(m.value for m in app.markdown) + " " + " ".join(c.value for c in app.caption)
     assert "Cheapest gas on this route: Far Cheap at $3.40/gal" in text
     assert "costs you about" in text  # the detour eats the saving, and it says so
@@ -295,7 +300,7 @@ def test_when_the_cheapest_is_the_recommended_stop_it_is_one_card_not_two(monkey
     """The same station must not be announced twice: the green card says it is also the cheapest."""
     app, _ = make_app(monkeypatch, stations=[s for s in crafted() if s["id"] != "far"])
     assert not any("Cheapest gas on this route" in m.value for m in app.markdown)
-    assert "also the cheapest" in app.get("success")[0].proto.body.lower()
+    assert any("also the cheapest" in m.value.lower() for m in app.markdown)
 
 
 def test_the_answer_is_not_repeated_in_the_metrics(monkeypatch):
@@ -379,7 +384,7 @@ def test_when_no_detour_pays_off_the_regret_line_does_not_mention_a_recommended_
     stations = [s("r1", 3.60, 0), s("r2", 3.60, 100), s("r3", 3.60, 200), s("r4", 3.603, 0),
                 s("far", 3.10, 8000)]
     app, _ = make_app(monkeypatch, stations=stations)
-    assert not app.get("success")
+    assert not headline(app)
     caps = [c.value for c in app.caption]
     assert any("no detour pays off enough" in c for c in caps)
     assert not any("instead of the best one" in c for c in caps)

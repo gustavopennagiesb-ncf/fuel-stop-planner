@@ -70,10 +70,11 @@ def test_glossary_defines_the_jargon(monkeypatch):
 
 
 def test_trip_and_car_controls_stay_in_the_main_page(at):
-    assert any("Your trip" in h.value for h in at.main.subheader)
-    assert any("Your car" in h.value for h in at.main.subheader)
-    assert at.main.slider(key="mpg")  # in the "Change car" popover of the Your car card
-    assert all("Your car" not in m.value for m in at.sidebar.markdown)
+    chips = " ".join(x.proto.body for x in at.main.get("html") if "fs-chips" in x.proto.body)
+    assert "Route" in chips and "Car" in chips  # the trip strip summarises both
+    assert at.main.slider(key="mpg")  # in the "Pick your car" popover of the trip strip
+    assert at.main.number_input(key="buffer_km")  # in the "Where are you going?" popover
+    assert "mpg" not in {s.key for s in at.sidebar.slider}
 
 
 def test_no_tab_sends_the_user_to_the_sidebar_for_the_mpg(monkeypatch):

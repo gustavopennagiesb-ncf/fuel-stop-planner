@@ -1,6 +1,5 @@
 """Streamlit app: when and where to fill up, with detour break-even and a validated LLM
 explanation. Runs without any key in fixture mode (synthetic data, clearly labelled)."""
-import base64
 import html
 import time
 
@@ -39,27 +38,10 @@ st.set_page_config(page_title="Fuel Stop Planner", page_icon=":material/local_ga
 
 
 
-def logo_svg(size):
-    """The app's mark: a map pin with a fuel drop inside."""
-    svg = (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="{size}" '
-           f'height="{size}"><defs><linearGradient id="g" x1="0" y1="0" x2="1" '
-           f'y2="1"><stop offset="0" stop-color="#9CD0FF"/><stop offset="1" '
-           f'stop-color="#3B82F6"/></linearGradient></defs>'
-           f'<rect width="32" height="32" rx="9" fill="url(#g)"/>'
-           '<path d="M16 6.2c-4.1 0-7.2 3.1-7.2 7.1 0 5.2 7.2 12.5 7.2 12.5s7.2-7.3 7.2-12.5'
-           'c0-4-3.1-7.1-7.2-7.1z" fill="#0F1115"/>'
-           '<path d="M16 9.4c-1 1.4-2.7 3.4-2.7 4.8a2.7 2.7 0 0 0 5.4 0c0-1.4-1.7-3.4-2.7-4.8z" '
-           'fill="#9CD0FF"/></svg>')
-    # st.html strips inline <svg>, so the mark goes in as an image.
-    data = base64.b64encode(svg.encode()).decode()
-    return (f'<img class="fs-mark" src="data:image/svg+xml;base64,{data}" width="{size}" '
-            f'height="{size}" alt="">')
-
-
-st.html('<div class="fs-hero">' + logo_svg(46) + '<div><h1 class="fs-title">Fuel Stop '
-        'Planner</h1><p class="fs-sub">Compare fuel stops along your route, including the cost '
-        'of the detour.</p></div></div>')
-status_line = st.empty()  # filled once the trip is loaded
+head_left, head_right = st.columns([3, 2], vertical_alignment="bottom")
+head_left.html('<div class="fs-hero"><h1 class="fs-title">Fuel Stop Planner</h1><p class="fs-sub">'
+               'Compare fuel stops along your route, including the cost of the detour.</p></div>')
+status_line = head_right.empty()  # filled once the trip is loaded
 
 provider = config.PROVIDER
 SYNTHETIC = provider == "fixture" or not (config.GOOGLE_API_KEY and config.EIA_API_KEY)
@@ -161,9 +143,16 @@ def address_input(name, label, default_text):
 
 
 origin = destination = None
-col_trip, col_car = st.columns([3, 2], vertical_alignment="top")
-with col_trip, st.container(border=True, height="stretch"):
-    card_header("Your trip", "Where you start and where you are going.", ":material/map:")
+# Trip and car fit on one line of "chips"; editing them opens a popover, so the answer starts
+# near the top of the page instead of below two tall cards.
+trip_strip = st.container(border=True, key="trip_strip")
+trip_strip.html('<p class="fs-step"><b>Start here</b> · Tell the app where you are going and pick '
+                'your car. ' + ("Press Find stations to search." if provider == "google"
+                                and config.GOOGLE_API_KEY else
+                                "The recommendation below updates on its own.") + '</p>')
+strip_row = trip_strip.container(horizontal=True, vertical_alignment="center", gap="small")
+trip_chips = strip_row.empty()  # filled once the trip and the car are known
+with strip_row.popover("Where are you going?", icon=":material/edit_location_alt:"):
     corridor_help = ("How far from your route a station can be and still be listed. For example, "
                      "3 km each side searches a 6 km wide strip along the route.")
     if provider == "google" and config.GOOGLE_API_KEY:
@@ -218,52 +207,60 @@ with col_trip, st.container(border=True, height="stretch"):
             buffer_km = st.number_input(
                 "Search corridor width (km each side)", 1.0, 10.0, 3.0, 0.5,
                 key="buffer_km", help=corridor_help)
-    trip_minimap = st.empty()  # filled once the route is loaded
-with col_car, st.container(border=True, height="stretch"):
-    card_header("Your car", "Fuel economy and tank size decide how far a detour is worth.",
-                ":material/directions_car:")
-    car_summary = st.empty()  # filled below, once mpg, tank and grade are known
-    with st.popover("Change car", icon=":material/tune:"):
-        st.markdown("**Look up my car**")
-        car = None
-        if time.time() < st.session_state.get("fe_down_until", 0.0):
-            # After a failure, do not retry on every rerun (each slider move would wait for the
-            # timeout again); the lookup is tried again after FE_RETRY_S.
-            st.caption("fueleconomy.gov is not reachable: set the mpg by hand below. The app "
-                       "tries again in about a minute.")
-        else:
-            try:
-                car = car_lookup()
-            except requests.RequestException:  # includes unusable responses (FuelEconomyError)
-                st.session_state["fe_down_until"] = time.time() + FE_RETRY_S
-                st.caption("fueleconomy.gov is not reachable: set the mpg by hand below. The "
-                           "app tries again in about a minute.")
-        if car and fueleconomy.is_electric(car):
-            st.warning("Electric car: EPA reports MPGe, not gallons. Set mpg by hand if you use "
-                       "a gas range extender or hybrid figures.")
-        elif car:
-            if fueleconomy.has_electric_part(car):
-                st.warning("Plug-in hybrid: the EPA figures blend electricity (MPGe) with "
-                           "gasoline, so they overstate gasoline-only mpg. Check the mpg by hand.")
-            kind = st.segmented_control(
-                "Which EPA figure", fueleconomy.KINDS, default="combined", key="epa_kind",
-                help="city: stop-and-go (closest to delivery driving). highway: steady speed. "
-                     "combined: 55% city / 45% highway.") or "combined"
-            looked_up = fueleconomy.mpg_for(car, kind)
-            if looked_up and st.session_state.get("mpg_applied") != (car["id"], kind):
-                st.session_state["mpg"] = min(60.0, max(10.0, round(looked_up * 2) / 2))
-                st.session_state["mpg_applied"] = (car["id"], kind)
-            st.caption(f"{car['label']}: city {car['city']}, combined {car['combined']}, "
-                       f"highway {car['highway']} mpg (EPA label values; real mileage varies).")
-        mpg = slider_with_number("Fuel economy (mpg)", 10.0, 60.0, DEFAULTS["mpg"], 0.5, "mpg")
-        tank = st.number_input("Tank size (gallons)", 5.0, 40.0, 13.0, 0.5, key="tank")
-        st.caption(f"About {tank * mpg:.0f} miles on a full tank at this mpg.")
-        fuel_grade = st.segmented_control(
-            "Fuel grade", ["Regular", "Midgrade", "Premium", "Diesel"],
-            default="Regular", key="fuel_grade",
-            help="Filters station prices to this grade. Regular = 87 octane.")
-    car_summary.markdown(f"{mpg:.1f} mpg · {tank:.0f} gal tank · {fuel_grade or 'Regular'} · "
-                        f"about {tank * mpg:.0f} mi per tank")
+with strip_row.popover("Pick your car", icon=":material/directions_car:"):
+    st.markdown("**Look up my car**")
+    car = None
+    if time.time() < st.session_state.get("fe_down_until", 0.0):
+        # After a failure, do not retry on every rerun (each slider move would wait for the
+        # timeout again); the lookup is tried again after FE_RETRY_S.
+        st.caption("fueleconomy.gov is not reachable: set the mpg by hand below. The app "
+                   "tries again in about a minute.")
+    else:
+        try:
+            car = car_lookup()
+        except requests.RequestException:  # includes unusable responses (FuelEconomyError)
+            st.session_state["fe_down_until"] = time.time() + FE_RETRY_S
+            st.caption("fueleconomy.gov is not reachable: set the mpg by hand below. The "
+                       "app tries again in about a minute.")
+    if car and fueleconomy.is_electric(car):
+        st.warning("Electric car: EPA reports MPGe, not gallons. Set mpg by hand if you use "
+                   "a gas range extender or hybrid figures.")
+    elif car:
+        if fueleconomy.has_electric_part(car):
+            st.warning("Plug-in hybrid: the EPA figures blend electricity (MPGe) with "
+                       "gasoline, so they overstate gasoline-only mpg. Check the mpg by hand.")
+        kind = st.segmented_control(
+            "Which EPA figure", fueleconomy.KINDS, default="combined", key="epa_kind",
+            help="city: stop-and-go (closest to delivery driving). highway: steady speed. "
+                 "combined: 55% city / 45% highway.") or "combined"
+        looked_up = fueleconomy.mpg_for(car, kind)
+        if looked_up and st.session_state.get("mpg_applied") != (car["id"], kind):
+            st.session_state["mpg"] = min(60.0, max(10.0, round(looked_up * 2) / 2))
+            st.session_state["mpg_applied"] = (car["id"], kind)
+        st.caption(f"{car['label']}: city {car['city']}, combined {car['combined']}, "
+                   f"highway {car['highway']} mpg (EPA label values; real mileage varies).")
+    mpg = slider_with_number("Fuel economy (mpg)", 10.0, 60.0, DEFAULTS["mpg"], 0.5, "mpg")
+    tank = st.number_input("Tank size (gallons)", 5.0, 40.0, 13.0, 0.5, key="tank")
+    st.caption(f"About {tank * mpg:.0f} miles on a full tank at this mpg.")
+    fuel_grade = st.segmented_control(
+        "Fuel grade", ["Regular", "Midgrade", "Premium", "Diesel"],
+        default="Regular", key="fuel_grade",
+        help="Filters station prices to this grade. Regular = 87 octane.")
+
+
+def chip(label, value):
+    return (f'<div class="fs-chip"><small>{html.escape(label)}</small>'
+            f'<b>{html.escape(value)}</b></div>')
+
+
+_trip_labels = (st.session_state.get("trip_applied", ti.DEFAULT)
+                if provider == "google" and config.GOOGLE_API_KEY else ti.DEFAULT)
+trip_chips.html('<div class="fs-chips">'
+                + chip("Route", f'{_trip_labels["origin"]["label"]} → '
+                                f'{_trip_labels["destination"]["label"]}')
+                + chip("Car", f"{mpg:.1f} mpg · {tank:.0f} gal tank")
+                + chip("Fuel", fuel_grade or "Regular")
+                + chip("Corridor", f"{buffer_km:g} km each side") + "</div>")
 
 _NAV = [
     ":material/local_gas_station: Where to stop",
@@ -281,18 +278,27 @@ def _nav_click(item):
 _SIDEBAR_CSS = """<style>
 html {font-variant-numeric: tabular-nums;}
 h1, h2, h3 {letter-spacing: -0.012em;}
-.fs-brand {display: flex; align-items: center; gap: 0.7rem; margin: 0;}
-.fs-brand b {display: block; font-family: "Space Grotesk", sans-serif; font-weight: 700;
-    font-size: 1.05rem; letter-spacing: 0.28em; line-height: 1.1;}
-.fs-brand small {display: block; font-weight: 600; font-size: 0.58rem; letter-spacing: 0.24em;
-    opacity: 0.55; margin-top: 0.2rem;}
-.fs-hero {display: flex; align-items: center; gap: 1rem; margin: 0.25rem 0 0.4rem 0;}
-.fs-mark {flex-shrink: 0; filter: drop-shadow(0 6px 18px rgba(59, 130, 246, 0.35));}
+.fs-brand {font-family: "Space Grotesk", sans-serif; font-weight: 700; font-size: 1.15rem;
+    letter-spacing: 0.3em; margin: 0;}
+.fs-brand span {font-weight: 600; font-size: 0.6rem; letter-spacing: 0.22em; opacity: 0.55;
+    margin-left: 0.5rem; vertical-align: middle;}
+.fs-hero {margin: 0.25rem 0 0.2rem 0;}
 .fs-title {font-family: "Space Grotesk", sans-serif; font-size: 2.1rem; font-weight: 700;
     letter-spacing: -0.02em; line-height: 1.1; margin: 0; padding: 0;}
-.fs-sub {margin: 0.3rem 0 0 0; opacity: 0.7; font-size: 0.95rem;}
+.fs-sub {margin: 0.35rem 0 0 0; opacity: 0.7; font-size: 0.95rem;}
+.fs-chips {display: flex; flex-wrap: wrap; gap: 0.5rem;}
+.fs-chip {background: #14171C; border: 1px solid #2B3039; border-radius: 0.5rem;
+    padding: 0.4rem 0.75rem;}
+.fs-chip small {display: block; font-size: 0.7rem; opacity: 0.6;}
+.fs-chip b {font-weight: 600; font-size: 0.85rem;}
+.fs-step {margin: 0 0 0.1rem 0; font-size: 0.9rem; opacity: 0.85;}
+.fs-step b {color: #9CCBFF; font-weight: 600;}
+.fs-kicker {font-size: 0.72rem; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase;
+    color: #5BD48A; margin: 0;}
+.st-key-answer_go {background: linear-gradient(160deg, rgba(91, 212, 138, 0.13),
+    rgba(30, 34, 41, 0) 55%); border-color: rgba(91, 212, 138, 0.35) !important;}
 .fs-status {font-size: 0.68rem; font-weight: 600; letter-spacing: 0.16em;
-    text-transform: uppercase; opacity: 0.6; margin: 0.1rem 0 0.2rem 0;}
+    text-transform: uppercase; opacity: 0.6; margin: 0 0 0.45rem 0; text-align: right;}
 /* bottom clears the avatar and badge Streamlit Cloud puts in the bottom-right corner */
 .st-key-assistant_fab {position: fixed; right: 1.75rem; bottom: 4.5rem; z-index: 1000;
     width: auto !important;}
@@ -322,8 +328,7 @@ with st.sidebar:
     _current_nav = st.session_state["main_tabs"]
     _active_key = "_nav_" + _current_nav.split(": ", 1)[1].replace(" ", "_")
     st.html(_SIDEBAR_CSS.replace("ACTIVE", _active_key))
-    st.html('<div class="fs-brand">' + logo_svg(34)
-            + '<div><b>FUEL STOP</b><small>ROUTE PLANNER</small></div></div>')
+    st.html('<p class="fs-brand">FUEL STOP<span>ROUTE PLANNER</span></p>')
 
     sidebar_label("Navigate")
     with st.container(key="nav_container", gap=None):
@@ -394,8 +399,9 @@ except Exception as e:  # network or key problems should not crash the demo
 
 
 
-def minimap(path, me=None):
-    """A small, static map of the route; `me` (the browser location, session only) adds a dot."""
+def minimap(path, me=None, best=None, height=190):
+    """A small, static map of the route. `me` (the browser location, session only) and `best`
+    (the recommended stop) each add a dot."""
     path = np.array(path)
     fig = go.Figure(go.Scattermap(lat=path[:, 0], lon=path[:, 1], mode="lines",
                                   line=dict(width=3, color="#9CCBFF"), hoverinfo="skip"))
@@ -404,23 +410,18 @@ def minimap(path, me=None):
                                 hoverinfo="skip"))
     if me:
         fig.add_trace(go.Scattermap(lat=[me[0]], lon=[me[1]], mode="markers",
-                                    marker=dict(size=13, color="#6CB4FF"), hoverinfo="skip"))
+                                    marker=dict(size=13, color="#E6E9EF"), hoverinfo="skip"))
+    if best:
+        fig.add_trace(go.Scattermap(lat=[best["lat"]], lon=[best["lng"]], mode="markers",
+                                    marker=dict(size=16, color="#6CB4FF"), hoverinfo="skip"))
     span = max(np.ptp(path[:, 0]), np.ptp(path[:, 1]), 0.05)
     zoom = float(np.clip(np.log2(360 / span) - 2.4, 3, 13))
     fig.update_layout(map=dict(style="carto-darkmatter", zoom=zoom,
                                center=dict(lat=float(path[:, 0].mean()),
                                            lon=float(path[:, 1].mean()))),
-                      height=190, margin=dict(l=0, r=0, t=0, b=0), showlegend=False)
+                      height=height, margin=dict(l=0, r=0, t=0, b=0), showlegend=False)
     return fig
 
-
-if trip.get("path"):
-    me = st.session_state.get("my_location") if trip["mode"] == "google" else None
-    with trip_minimap.container():
-        st.plotly_chart(minimap(trip["path"], me), width="stretch", key="trip_minimap",
-                        config={"displayModeBar": False, "staticPlot": True},
-                        alt="Small map of the route" + (" and your current location" if me
-                                                        else ""))
 
 for w in trip["warnings"]:
     st.info(w)
@@ -450,7 +451,7 @@ if live:
 else:
     _route = f'{ti.DEFAULT["origin"]["label"]} → {ti.DEFAULT["destination"]["label"]}'
 _n_priced = sum(1 for s in priced if s.get("price") is not None)
-_status = [_route, f"{len(_stations)} stations", f"{_n_priced} priced",
+_status = [f"{len(_stations)} stations", f"{_n_priced} priced",
            st.session_state.get("fuel_grade") or "Regular",
            "synthetic data" if SYNTHETIC else "live data"]
 status_line.html('<p class="fs-status">' + " · ".join(html.escape(x) for x in _status) + "</p>")
@@ -553,24 +554,51 @@ if _selected == ":material/local_gas_station: Where to stop":
                             key="p_ref_manual")
 
     with answer:
-        with st.container(border=True):
-            card_header("Recommended stop", "The station that saves you the most after the "
-                        "detour's extra fuel and time.", ":material/verified:")
-            if not _stations:
-                st.warning("No stations were listed within the search corridor. Widen the "
-                           "corridor under Your trip and press Find stations.",
-                           title="No stations found near this route")
+        has_map = bool(trip.get("path"))
+        hero_left, hero_right = (st.columns([1.55, 1], vertical_alignment="top") if has_map
+                                 else (st.container(), None))
+        with hero_left:
+            if rec["verdict"] == "go" and _stations:
+                b = rec["best"]
+                title, _ = recommend.summary(rec)
+                with st.container(border=True, key="answer_go", height="stretch"):
+                    st.html('<p class="fs-kicker">Recommended stop</p>')
+                    st.header(title, anchor=False)
+                    st.markdown("Saves you the most after the detour's extra fuel and time."
+                                + (" It is also the cheapest gas on this route."
+                                   if cheap_is_best else ""))
+                    with st.container(horizontal=True, gap="small"):
+                        st.metric("Price", f"${b['price']:.2f}/gal", border=True)
+                        st.metric("You save", f"${b['net_benefit']:.2f}", border=True,
+                                  help="After the extra fuel and your time on the detour.")
+                        st.metric("Detour", f"{b['extra_miles']:.1f} mi", border=True)
+                        st.metric("Extra time", f"{b['extra_minutes']:.0f} min", border=True)
+                    maps_buttons(b, live)
             else:
-                title, body = recommend.summary(rec)
-                if rec["verdict"] == "go":
-                    if cheap_is_best:
-                        body += " It is also the cheapest gas on this route."
-                    st.success(body, title=title, icon=":material/local_gas_station:")
-                    maps_buttons(rec["best"], live)
-                elif rec["verdict"] == "skip":
-                    st.info(body, title=title, icon=":material/info:")
-                else:
-                    st.warning(body, title=title)
+                with st.container(border=True, height="stretch"):
+                    card_header("Recommended stop", "The station that saves you the most after "
+                                "the detour's extra fuel and time.", ":material/verified:")
+                    if not _stations:
+                        st.warning("No stations were listed within the search corridor. Widen "
+                                   "the corridor under Where are you going? and press Find stations.",
+                                   title="No stations found near this route")
+                    else:
+                        title, body = recommend.summary(rec)
+                        if rec["verdict"] == "skip":
+                            st.info(body, title=title, icon=":material/info:")
+                        else:
+                            st.warning(body, title=title)
+        if hero_right is not None:
+            with hero_right, st.container(border=True, height="stretch"):
+                me = st.session_state.get("my_location") if live else None
+                st.plotly_chart(minimap(trip["path"], me, rec["best"] if best_id else None,
+                                        height=300),
+                                width="stretch", key="hero_minimap",
+                                config={"displayModeBar": False, "staticPlot": True},
+                                alt="Small map of the route" + (" and the recommended stop"
+                                                                if best_id else ""))
+                st.caption(html.escape(_route) + (" · blue dot: recommended stop" if best_id
+                                                  else ""))
         if cheap and not cheap_is_best:  # a cheaper station that the detour may not justify
             with st.container(border=True):
                 headline, detail = recommend.describe_cheapest(cheap, p_ref, best_id)
@@ -605,13 +633,19 @@ if _selected == ":material/local_gas_station: Where to stop":
                     st.metric("Fuel needed", f"{trip_gallons:.1f} gal", border=True,
                               help=f"{trip_miles:.0f} mi ÷ {mpg:.0f} mpg")
         if rec["alternatives"]:
-            card_header("Other good options", "Also worth the detour, ranked by what they save.")
-            for col, alt in zip(st.columns(len(rec["alternatives"])), rec["alternatives"]):
+            with st.container(horizontal=True, vertical_alignment="bottom"):
+                st.subheader("Other good options", anchor=False)
+                st.caption("Also worth the detour, ranked by what they save", width="content")
+            for rank, (col, alt) in enumerate(zip(st.columns(len(rec["alternatives"])),
+                                                  rec["alternatives"]), start=2):
                 with col.container(border=True, height="stretch"):
+                    with st.container(horizontal=True, vertical_alignment="center"):
+                        st.markdown(f":small[**#{rank}**]")
+                        st.markdown(f":green-badge[saves \\${alt['net_benefit']:.2f}]",
+                                    width="content")
                     st.markdown(f"**{recommend.md_escape(alt['name'])}**")
                     st.subheader(f"\\${alt['price']:.2f} :small[/gal]", anchor=False)
-                    st.caption(f"Saves \\${alt['net_benefit']:.2f} · "
-                               f"{alt['extra_minutes']:.0f} min detour")
+                    st.caption(f"{alt['extra_minutes']:.0f} min detour")
                     alt_pin = None
                     if live:
                         try:
@@ -622,25 +656,36 @@ if _selected == ":material/local_gas_station: Where to stop":
                                    icon=":material/location_on:", disabled=alt_pin is None,
                                    key=f"open_alt_{alt['id']}", width="stretch")
         if ranked:
-            with st.container(border=True):
-                card_header("Prices on this route", "The typical price you pay without a detour, "
-                            "and how many stations reported one.", ":material/sell:")
-                with st.container(horizontal=True):
-                    st.metric("Gas price on your route", f"${p_ref:.2f}/gal", border=True,
-                              help="The typical price at stations right on your route — what you'd pay "
-                                   "without taking any detour.")
-                    n_total = len(_stations)
-                    n_priced = sum(1 for s in priced if s["price"] is not None)
-                    st.metric("Stations with a price",
-                              f"{n_priced} of {n_total}" if n_total > n_priced else f"{n_priced}",
-                              border=True,
-                              help="Stations inside your search corridor that returned a price. "
-                                   "Stations without a price are shown in the table above — "
-                                   "you can enter their price manually and the ranking updates.")
-                    if n_total > n_priced:
-                        st.caption(f"{n_total - n_priced} station{'s' if n_total-n_priced>1 else ''} "
-                                   f"had no price listed. Enter prices in the table above to include "
-                                   f"them in the ranking.")
+            # Real station prices against a made-up series (or the reverse) are not comparable.
+            florida = series["florida"].dropna() if "florida" in series else []
+            same_kind = (trip["mode"] == "fixture") == (series_label == "synthetic")
+            versus = None
+            if same_kind and len(florida):
+                versus = insight.corridor_vs_state(
+                    [s["price"] for s in priced if s["price"]], float(florida.iloc[-1]))
+            n_total = len(_stations)
+            n_priced = sum(1 for s in priced if s["price"] is not None)
+            cols = st.columns(3 if versus else 2)
+            with cols[0].container(border=True, height="stretch"):
+                st.metric("Gas price on your route", f"${p_ref:.2f}/gal",
+                          help="The typical price at stations right on your route — what "
+                               "you'd pay without taking any detour.")
+                st.caption("Typical price without a detour")
+            with cols[1].container(border=True, height="stretch"):
+                st.metric("Stations with a price",
+                          f"{n_priced} of {n_total}" if n_total > n_priced else f"{n_priced}",
+                          help="Stations inside your search corridor that returned a price. "
+                               "Stations without a price can be priced by hand under Edit "
+                               "prices and settings, and the ranking updates.")
+                st.caption(f"{n_total - n_priced} had no price listed; type it under Edit "
+                           f"prices and settings" if n_total > n_priced
+                           else f"Inside the {buffer_km:g} km corridor")
+            if versus:
+                with cols[2].container(border=True, height="stretch"):
+                    diff = versus["diff_cents"]
+                    st.metric("Versus Florida average", f"{'+' if diff > 0 else ''}{diff}¢")
+                    st.caption("Your route is " + versus["verdict"].replace(
+                        "state average", "Florida average"))
             lost = insight.regret(ranked)
             if lost > 0 and rec["verdict"] == "go":
                 st.caption(f"If you stopped at the cheapest station instead, you'd save "
@@ -650,13 +695,6 @@ if _selected == ":material/local_gas_station: Where to stop":
                            f"pays off enough, so fill up at the first station on your route.")
             else:
                 st.caption("The cheapest station is also the best choice here.")
-            # Real station prices against a made-up series (or the reverse) are not comparable.
-            florida = series["florida"].dropna() if "florida" in series else []
-            same_kind = (trip["mode"] == "fixture") == (series_label == "synthetic")
-            versus = None
-            if same_kind and len(florida):
-                versus = insight.corridor_vs_state(
-                    [s["price"] for s in priced if s["price"]], float(florida.iloc[-1]))
             if versus:
                 cents = abs(versus["diff_cents"])
                 gap = "" if cents == 0 or versus["verdict"].startswith("about") else f"{cents} cents "
