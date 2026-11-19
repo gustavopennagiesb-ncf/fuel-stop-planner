@@ -44,15 +44,18 @@ def recommend(ranked, min_saving=MIN_SAVING_DEFAULT, n_alternatives=3, stop_need
     return result("go", best, [s for s in ranked[1:] if worth(s)][:n_alternatives])
 
 
-def summary(rec):
-    """(title, body) shown in the recommendation card."""
+def summary(rec, nearest=None):
+    """(title, body) shown in the recommendation card. `nearest`: under a fuel plan with a stop
+    needed, the reachable station with the smallest along-route reach (with its gallons); a
+    skip then names it instead of the generic "first station on your route"."""
     best = rec["best"]
     if rec["verdict"] == "no_stop":
         if best is None:
             return ("No stop needed", "")
+        gal = f" for {best['gallons']:.1f} gal" if "gallons" in best else ""
         return ("No stop needed",
                 f"If you want to fill up anyway, the best deal is {md_escape(best['name'])} "
-                f"(saves about ${best['net_benefit']:.2f}).")
+                f"(saves about ${best['net_benefit']:.2f}{gal}).")
     if rec["verdict"] == "go":
         buy = (f" · buy {best['gallons']:.1f} gal"
                if rec.get("fuel_aware") and "gallons" in best else "")
@@ -60,6 +63,10 @@ def summary(rec):
                 f"${best['price']:.2f}/gal. Stopping here saves about ${best['net_benefit']:.2f} "
                 f"after the detour ({best['extra_miles']:.1f} extra miles, "
                 f"{minutes_label(best['extra_minutes'])}).")
+    if rec["verdict"] == "skip" and rec.get("fuel_aware") and nearest is not None:
+        return ("Stop for fuel",
+                "No detour pays off enough, so take the nearest reachable station: "
+                f"{md_escape(nearest['name'])} · buy {nearest['gallons']:.1f} gal.")
     if rec["verdict"] == "skip":
         nb = best["net_benefit"]
         saving_clause = (f"costs ${-nb:.2f} to detour" if nb < 0

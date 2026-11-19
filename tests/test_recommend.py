@@ -171,3 +171,27 @@ def test_stop_needed_none_is_todays_behaviour_even_with_gallons():
     assert rc.recommend([], 0.5)["fuel_aware"] is False
     skip = dict(row, net_benefit=0.1)
     assert rc.recommend([skip], 0.5)["verdict"] == "skip"
+
+
+def test_no_stop_optional_line_names_the_gallons_and_escapes_the_name():
+    best = {**st("Evil *[x](http://e)* $1$", 2.4), "gallons": 8.8}
+    title, body = rc.summary(rc.recommend([best], stop_needed=False))
+    assert title == "No stop needed"
+    assert "saves about $2.40 for 8.8 gal)." in body
+    assert "\\*\\[x\\]\\(http://e\\)\\* \\$1\\$" in body
+
+
+def test_stop_needed_skip_names_the_nearest_reachable_station():
+    best = {**st("Far <b>", 0.2), "gallons": 9.0}
+    near = {**st("Near *1*", -0.5, sid="n"), "gallons": 4.5}
+    rec = rc.recommend([best, near], stop_needed=True)
+    title, body = rc.summary(rec, nearest=near)
+    assert title == "Stop for fuel"
+    assert body == ("No detour pays off enough, so take the nearest reachable station: "
+                    "Near \\*1\\* · buy 4.5 gal.")
+
+
+def test_non_fuel_aware_skip_copy_is_unchanged():
+    title, body = rc.summary(rc.recommend([st("A", 0.3)], min_saving=0.5))
+    assert title == "No detour pays off enough"
+    assert body.endswith("Fill up at the first station on your route.")
