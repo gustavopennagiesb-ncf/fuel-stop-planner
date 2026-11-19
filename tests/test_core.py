@@ -414,3 +414,50 @@ def test_rank_stations_skips_stations_without_gallons():
     sts = _fixture_stations()
     ranked = rank_stations(sts, 3.5, {sts[0]["id"]: 12}, 27, 19, 45)
     assert [r["id"] for r in ranked] == [sts[0]["id"]] and ranked[0]["gallons"] == 12
+
+
+def test_rank_stations_uses_each_stations_own_gallons():
+    st = [{"id": "a", "price": 3.40, "off_route_m": 1200},
+          {"id": "b", "price": 3.45, "off_route_m": 800}]
+    ranked = rank_stations(st, 3.60, {"a": 5, "b": 15}, 27.2, 19, 45)
+    for r in ranked:
+        g = {"a": 5, "b": 15}[r["id"]]
+        assert r["gallons"] == g
+        miles = 2 * next(s for s in st if s["id"] == r["id"])["off_route_m"] / 1609.344
+        assert r["net_benefit"] == round(net_benefit(g, 3.60, r["price"], miles,
+                                                     miles / 45 * 60, 27.2, 19), 2)
+
+
+def _plan_facts(**kw):
+    facts = {"best_station": "RoadStop #28", "best_price": 3.41, "p_ref": 3.6, "gallons": 8.8,
+             "best_saving_gross": 1.67, "extra_miles": 1.2, "extra_minutes": 2.1,
+             "best_net_benefit": 1.12, "breakeven_miles": 3.4, "value_of_time": 19.0,
+             "verdict": "the detour pays off: stop at the best station"}
+    facts.update(kw)
+    return facts
+
+
+def test_template_keeps_one_decimal_gallons_so_every_number_traces():
+    facts = _plan_facts()
+    text = template_explanation(facts)
+    assert "8.8 gallons" in text and "9 gallons" not in text
+    assert validate(text, facts) == (1.0, [])
+    skip = _plan_facts(best_net_benefit=-0.4,
+                       verdict="no detour pays off enough: fill up on your route")
+    assert validate(template_explanation(skip), skip) == (1.0, [])
+
+
+def test_template_follows_a_no_stop_verdict():
+    facts = _plan_facts(stop_needed=False, arrive_gal=6.4,
+                        verdict="you have enough fuel: no stop needed")
+    text = template_explanation(facts)
+    assert text.startswith("No stop needed") and "6.4 gal" in text and "Stop at" not in text
+    assert validate(text, facts) == (1.0, [])
+
+
+def test_template_follows_a_skip_verdict_with_a_small_positive_saving():
+    facts = _plan_facts(best_net_benefit=0.3,
+                        verdict="no detour pays off enough: fill up on your route")
+    text = template_explanation(facts)
+    assert "Stop at" not in text and "below your minimum" in text
+    assert validate(text, facts) == (1.0, [])

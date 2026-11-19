@@ -60,15 +60,25 @@ def _short(exc, limit=200):
 
 
 def template_explanation(facts: dict) -> str:
-    """Deterministic fallback; also the baseline the LLM output is compared with."""
+    """Deterministic fallback; also the baseline the LLM output is compared with. It follows the
+    app's verdict and prints numbers only at the precision they are stored in `facts`."""
+    if facts.get("stop_needed") is False:
+        return (f"No stop needed: you reach your destination with about "
+                f"{facts['arrive_gal']:.1f} gal left.")
+    skip = str(facts.get("verdict", "")).startswith("no detour pays off")
     if facts.get("best_station") is None or facts["best_net_benefit"] <= 0:
         return (f"Do not detour. The best candidate saves ${facts['best_saving_gross']:.2f} on "
-                f"{facts['gallons']:.0f} gallons but the detour costs more than that once "
+                f"{facts['gallons']:g} gallons but the detour costs more than that once "
                 f"fuel and your time (${facts['value_of_time']:.0f}/h) are counted. Fill up on the "
                 f"route at about ${facts['p_ref']:.2f}/gal.")
+    if skip:
+        return (f"No detour pays off enough. The best candidate, {facts['best_station']}, saves "
+                f"only ${facts['best_net_benefit']:.2f} after the detour on {facts['gallons']:g} "
+                f"gallons, which is below your minimum. Fill up on the route at about "
+                f"${facts['p_ref']:.2f}/gal.")
     return (f"Stop at {facts['best_station']}: ${facts['best_price']:.2f}/gal versus "
             f"${facts['p_ref']:.2f} on the route, a gross saving of "
-            f"${facts['best_saving_gross']:.2f} for {facts['gallons']:.0f} gallons. The detour adds "
+            f"${facts['best_saving_gross']:.2f} for {facts['gallons']:g} gallons. The detour adds "
             f"{facts['extra_miles']:.1f} miles and {facts['extra_minutes']:.1f} minutes, so the "
             f"net benefit is ${facts['best_net_benefit']:.2f}. It stays positive up to "
             f"{facts['breakeven_miles']:.1f} extra miles.")
