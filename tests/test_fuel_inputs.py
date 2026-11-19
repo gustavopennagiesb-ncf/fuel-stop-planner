@@ -122,3 +122,53 @@ def test_no_session_state_default_warning_for_the_tank(monkeypatch, fresh_cache,
 def test_no_session_state_default_warning_for_the_fuel_inputs(monkeypatch, caplog, session):
     make_app(monkeypatch, session=session)
     assert session_state_warnings(caplog) == []
+
+
+# --- the plan wired into the recommendation (Task 7) ---------------------------------------
+def test_full_tank_on_the_synthetic_route_needs_no_stop(monkeypatch):
+    app = make_app(monkeypatch, session={"fuel_input_mode": "Fuel gauge", "fuel_level_eighths": "F"})
+    assert any(h.value == "No stop needed" for h in app.header)
+    # the insight panel must not contradict the headline by telling you to fill up
+    assert not any("fill up at the first station" in c.value for c in app.caption)
+
+
+def test_low_tank_recommends_a_reachable_station_with_gallons(monkeypatch):
+    app = make_app(monkeypatch, session={"fuel_input_mode": "Miles left", "fuel_miles_left": 80.0})
+    titles = [h.value for h in app.header if h.value.startswith("Fill up at ")]
+    assert titles and " · buy " in titles[0]
+    assert "Buy" in {m.label for m in app.metric}
+
+
+def test_low_tank_mirrors_the_gallons_into_the_locked_slider(monkeypatch):
+    app = make_app(monkeypatch, session={"fuel_input_mode": "Miles left", "fuel_miles_left": 80.0})
+    title = next(h.value for h in app.header if h.value.startswith("Fill up at "))
+    bought = float(title.rsplit(" · buy ", 1)[1].split()[0])
+    slider = app.slider(key="gallons")
+    assert slider.disabled
+    assert slider.value == min(25.0, max(3.0, bought))
+
+
+def test_empty_tank_says_no_station_is_reachable(monkeypatch):
+    app = make_app(monkeypatch, session={"fuel_input_mode": "Fuel gauge", "fuel_level_eighths": "E"})
+    assert any("reachable" in w.value for w in app.warning) and not app.exception
+
+
+def test_trip_at_a_glance_now_renders(monkeypatch):
+    app = make_app(monkeypatch)
+    assert "Trip distance" in {m.label for m in app.metric}
+
+
+def test_fuel_on_arrival_shows_when_no_stop_is_needed(monkeypatch):
+    app = make_app(monkeypatch, session={"fuel_input_mode": "Fuel gauge", "fuel_level_eighths": "F"})
+    assert "Fuel on arrival" in {m.label for m in app.metric}
+
+
+def test_regret_line_agrees_with_headline_when_gallons_differ(monkeypatch):
+    app = make_app(monkeypatch, session={"fuel_input_mode": "Miles left", "fuel_miles_left": 80.0})
+    assert not app.exception  # regret/price_rank_gap/flip_point get the same filtered stations and mapping
+
+
+def test_no_fuel_level_keeps_todays_headline(monkeypatch):
+    app = make_app(monkeypatch)
+    assert not any(h.value == "No stop needed" for h in app.header)
+    assert not any(" · buy " in h.value for h in app.header)

@@ -19,6 +19,7 @@ load_dotenv()
 load_secrets()
 
 import config  # noqa: E402
+import driver
 import fuelplan
 import insight
 import location
@@ -397,16 +398,15 @@ with st.sidebar:
             )
 
     sidebar_label("Fill-up")
-    gallons_by_hand = True
-    if fuel_mode is not None:
-        gallons_by_hand = st.toggle("Set gallons by hand", key="gallons_manual",
-                                    help="Off: the app works out how much to buy from your "
-                                         "fuel level.")
-    gallons = slider_with_number(
-        "Gallons to buy", 3.0, 25.0, DEFAULTS["gallons"], 0.5, "gallons",
-        help="How much fuel you plan to put in at the stop. Bigger fills make a price gap worth "
-             "more. For example, a 10 cent/gal gap on 12 gallons saves $1.20 before the detour "
-             "costs.", disabled=not gallons_by_hand)
+    # The gallons slider is drawn into this slot after the shared computation: with a fuel level
+    # set, the app chooses the gallons, and a widget's value cannot change once it is drawn.
+    fill_slot = st.container()
+    with fill_slot:
+        gallons_by_hand = True
+        if fuel_mode is not None:
+            gallons_by_hand = st.toggle("Set gallons by hand", key="gallons_manual",
+                                        help="Off: the app works out how much to buy from your "
+                                             "fuel level.")
 
     sidebar_label("Time")
     vot = slider_with_number(
@@ -495,18 +495,46 @@ p_ref = reference_price(priced)
 if p_ref is None:
     p_ref = float(st.session_state.get("p_ref_manual", 3.6))
 detoured = compute_detours({**trip, "stations": priced})
-ranked = rank_stations(detoured, p_ref, gallons, mpg, vot, speed)
-rec = recommend.recommend(ranked, _min_saving_val)
+tmiles = fuelplan.trip_miles(trip["path"]) if trip.get("path") else 0.0
+_gallons_slider = float(st.session_state.get("gallons", DEFAULTS["gallons"]))
+# With a fuel level set (and gallons not set by hand), each station gets its own gallons from the
+# plan, and unreachable stations are dropped before ranking (never ranked with 0 gallons). The
+# headline, the options and the insight panel all read the same `detoured` and `gallons_arg`.
+fplan = None
+gallons_arg = _gallons_slider
+if fuel_mode is not None and not gallons_by_hand and tmiles > 0:
+    _reserve = driver.reserve_gallons(tank, "standard")
+    _fuel_gal = fuelplan.fuel_on_board(fuel_mode, fuel_value, tank, mpg, _reserve)
+    fplan = fuelplan.plan(detoured, trip["path"], _fuel_gal, tank, mpg, _reserve, p_ref)
+    gallons_arg = {sid: v["gallons"] for sid, v in fplan["per_station"].items()
+                   if v["reachable"]}
+    detoured = [s for s in detoured if s["id"] in gallons_arg]
+ranked = rank_stations(detoured, p_ref, gallons_arg, mpg, vot, speed)
+rec = recommend.recommend(ranked, _min_saving_val,
+                          stop_needed=None if fplan is None else fplan["stop_needed"])
+# The single gallons figure the rest of the app reads (Sensitivity, flip point, AI facts, slider).
+_app_chose = (fplan is not None and rec["best"] is not None
+              and rec["verdict"] in ("go", "no_stop"))
+gallons_used = float(rec["best"]["gallons"]) if _app_chose else _gallons_slider
+with fill_slot:
+    if _app_chose:
+        st.session_state["gallons"] = min(25.0, max(3.0, gallons_used))
+        st.session_state["gallons_num"] = st.session_state["gallons"]
+    slider_with_number(
+        "Gallons to buy", 3.0, 25.0, DEFAULTS["gallons"], 0.5, "gallons",
+        help="How much fuel you plan to put in at the stop. Bigger fills make a price gap worth "
+             "more. For example, a 10 cent/gal gap on 12 gallons saves $1.20 before the detour "
+             "costs.", disabled=not gallons_by_hand)
+    if _app_chose and not 3.0 <= gallons_used <= 25.0:
+        st.caption(f"App's choice: {gallons_used:.1f} gal")
 live = trip["mode"] == "google"
 best_id = rec["best"]["id"] if rec["verdict"] == "go" else None
 cheap = recommend.cheapest(ranked)
 cheap_is_best = bool(cheap and best_id and cheap["id"] == best_id)
 
-if live:
-    _applied = st.session_state.get("trip_applied", ti.DEFAULT)
-    _route = f'{_applied["origin"]["label"]} → {_applied["destination"]["label"]}'
-else:
-    _route = f'{ti.DEFAULT["origin"]["label"]} → {ti.DEFAULT["destination"]["label"]}'
+_applied = st.session_state.get("trip_applied", ti.DEFAULT) if live else ti.DEFAULT
+_route = f'{_applied["origin"]["label"]} → {_applied["destination"]["label"]}'
+_dest = _applied["destination"]["label"] or "your destination"
 _n_priced = sum(1 for s in priced if s.get("price") is not None)
 _status = [f"{len(_stations)} stations", f"{_n_priced} priced",
            st.session_state.get("fuel_grade") or "Regular",
@@ -625,13 +653,31 @@ if _selected == ":material/local_gas_station: Where to stop":
                                 + (" It is also the cheapest gas on this route."
                                    if cheap_is_best else ""))
                     with st.container(horizontal=True, gap="small"):
+                        if fplan is not None:
+                            st.metric("Buy", f"{b['gallons']:.1f} gal", border=True,
+                                      help="Worked out from your fuel level: fill up when this "
+                                           "station is cheaper than the route, else just enough "
+                                           "to finish the trip with your reserve.")
                         st.metric("Price", f"${b['price']:.2f}/gal", border=True)
                         st.metric("You save", f"${b['net_benefit']:.2f}", border=True,
                                   help="After the extra fuel and your time on the detour.")
                         st.metric("Detour", f"{b['extra_miles']:.1f} mi", border=True)
                         st.metric("Extra time", recommend.minutes_label(b["extra_minutes"]),
                                   border=True)
+                    if fplan is not None and fplan["per_station"][b["id"]]["short"]:
+                        st.warning("This trip needs more than one tank: plan another stop "
+                                   f"before {recommend.md_escape(_dest)}.")
                     maps_buttons(b, live)
+            elif rec["verdict"] == "no_stop":
+                title, body = recommend.summary(rec)
+                arrive = fplan["arrive_gal"]
+                with st.container(border=True, key="answer_go", height="stretch"):
+                    st.html('<p class="fs-kicker">Your fuel</p>')
+                    st.header(title, anchor=False)
+                    st.markdown(f"You reach {recommend.md_escape(_dest)} with about "
+                                f"{arrive:.1f} gal left ({arrive * mpg:.0f} mi).")
+                    if body:
+                        st.caption(body)
             else:
                 with st.container(border=True, height="stretch"):
                     card_header("Recommended stop", "The station that saves you the most after "
@@ -640,6 +686,10 @@ if _selected == ":material/local_gas_station: Where to stop":
                         st.warning("No stations were listed within the search corridor. Widen "
                                    "the corridor under Where are you going? and press Find stations.",
                                    title="No stations found near this route")
+                    elif (fplan is not None and fplan["stop_needed"]
+                          and not any(v["reachable"] for v in fplan["per_station"].values())):
+                        st.warning("None of the listed stations is reachable before your "
+                                   "reserve: fill up at the first station you pass.")
                     else:
                         title, body = recommend.summary(rec)
                         if rec["verdict"] == "skip":
@@ -657,6 +707,9 @@ if _selected == ":material/local_gas_station: Where to stop":
                                                                 if best_id else ""))
                 st.caption(html.escape(_route) + (" · blue dot: recommended stop" if best_id
                                                   else ""))
+        if fplan is not None and fplan["tank_too_small"]:
+            st.caption(f"Your tank looks bigger than {tank:g} gal: check Tank size under "
+                       "Pick your car.")
         if cheap and not cheap_is_best:  # a cheaper station that the detour may not justify
             with st.container(border=True):
                 headline, detail = recommend.describe_cheapest(cheap, p_ref, best_id)
@@ -669,8 +722,8 @@ if _selected == ":material/local_gas_station: Where to stop":
                                        icon=":material/location_on:", key="open_cheapest")
                     except ValueError:
                         pass
-        if trip.get("distance_m") and p_ref:
-            trip_miles = trip["distance_m"] / 1609.34
+        if tmiles > 0 and p_ref:
+            trip_miles = tmiles
             trip_gallons = trip_miles / mpg
             trip_cost = trip_gallons * p_ref
             nb = rec["best"]["net_benefit"] if rec["verdict"] == "go" else 0.0
@@ -686,10 +739,18 @@ if _selected == ":material/local_gas_station: Where to stop":
                               border=True,
                               help="Net benefit of the recommended stop after detouring cost and "
                                    "your value of time. $0.00 means no detour pays off.")
-                    st.metric("Trip distance", f"{trip_miles:.0f} mi", border=True,
-                              help="Direct route distance, not including any detour.")
+                    st.metric("Trip distance",
+                              f"about {trip_miles:.0f} mi" if SYNTHETIC else f"{trip_miles:.0f} mi",
+                              border=True,
+                              help="Direct route distance, not including any detour."
+                                   + (" Approximate: the synthetic route is straight lines "
+                                      "between cities." if SYNTHETIC else ""))
                     st.metric("Fuel needed", f"{trip_gallons:.1f} gal", border=True,
                               help=f"{trip_miles:.0f} mi ÷ {mpg:.0f} mpg")
+                    if fplan is not None and not fplan["stop_needed"]:
+                        st.metric("Fuel on arrival", f"{fplan['arrive_gal']:.1f} gal",
+                                  border=True,
+                                  help="Fuel left at the destination without stopping.")
         if rec["alternatives"]:
             with st.container(horizontal=True, vertical_alignment="bottom"):
                 st.subheader("Other good options", anchor=False)
@@ -748,6 +809,9 @@ if _selected == ":material/local_gas_station: Where to stop":
             if lost > 0 and rec["verdict"] == "go":
                 st.caption(f"If you stopped at the cheapest station instead, you'd save "
                            f"${lost:.2f} less on this fill-up.")
+            elif lost > 0 and rec["verdict"] == "no_stop":
+                st.caption(f"No stop is needed. If you fill up anyway, the cheapest station "
+                           f"would save you ${lost:.2f} less than the best one.")
             elif lost > 0:
                 st.caption(f"The cheapest station isn't the best one here — but no detour "
                            f"pays off enough, so fill up at the first station on your route.")
@@ -765,7 +829,7 @@ if _selected == ":material/local_gas_station: Where to stop":
                            f"Your route is {gap}{verdict}.")
             grid = insight.decision_grid(detoured, p_ref, mpg, speed)
             rank_gap = insight.price_rank_gap(ranked)
-            flip = insight.flip_point(detoured, p_ref, gallons, mpg, speed)
+            flip = insight.flip_point(detoured, p_ref, gallons_arg, mpg, speed)
             with st.expander("Does cheapest always mean best?",
                              icon=":material/balance:"):
                 st.markdown(f"Picking the **cheapest** sign instead of the **best-ranked** stop "
@@ -782,10 +846,10 @@ if _selected == ":material/local_gas_station: Where to stop":
                     st.markdown(f"Right now the cheapest station ranks **#{rank_gap}** "
                                 f"when detour cost and your time are included.")
                 if flip is None:
-                    st.markdown(f"At {gallons:g} gallons the best station stays the same "
+                    st.markdown(f"At {gallons_used:g} gallons the best station stays the same "
                                 f"regardless of how you value your time.")
                 else:
-                    st.markdown(f"At {gallons:g} gallons the best station changes once your time "
+                    st.markdown(f"At {gallons_used:g} gallons the best station changes once your time "
                                 f"is worth **${flip:.2f}/h or more** — adjust the slider in the "
                                 f"sidebar to see.")
                 table = pd.DataFrame(
@@ -1034,7 +1098,7 @@ elif _selected == ":material/calculate: Sensitivity":
              "(rows, $/h), using your gallons, mpg and speed.")
     if True:
         ref = p_ref if p_ref else 3.6
-        sens = sensitivity_table(gallons, ref, mpg, speed)
+        sens = sensitivity_table(gallons_used, ref, mpg, speed)
         df_s = pd.DataFrame(sens).T
         df_s.index.name = "value of time $/h"
         st.dataframe(df_s, alt="Break-even extra miles by price gap and value of time")
@@ -1051,18 +1115,27 @@ elif _selected == ":material/calculate: Sensitivity":
 def assistant_facts():
     best = ranked[0]
     gap = p_ref - best["price"]
-    return {"best_station": best["name"], "best_price": round(best["price"], 2),
-            "p_ref": round(p_ref, 2), "gallons": gallons,
-            "best_saving_gross": round(gallons * gap, 2),
+    g = round(gallons_used, 1)
+    facts = {"best_station": best["name"], "best_price": round(best["price"], 2),
+            "p_ref": round(p_ref, 2), "gallons": g,
+            "best_saving_gross": round(g * gap, 2),
             "extra_miles": round(best["extra_miles"], 1),
             "extra_minutes": round(best["extra_minutes"], 1),
             "best_net_benefit": round(best["net_benefit"], 2),
             "breakeven_miles": round(max(breakeven_miles(
-                gallons, gap, best["price"], mpg, vot, speed), 0.0), 1) if gap > 0 else 0.0,
+                g, gap, best["price"], mpg, vot, speed), 0.0), 1) if gap > 0 else 0.0,
             "value_of_time": vot,
             # The decision is the app's, not the model's: it must state it, never re-derive it.
-            "verdict": ("the detour pays off: stop at the best station" if rec["verdict"] == "go"
+            "verdict": ("you have enough fuel: no stop needed" if rec["verdict"] == "no_stop"
+                        else "the detour pays off: stop at the best station"
+                        if rec["verdict"] == "go"
                         else "no detour pays off enough: fill up on your route")}
+    if fplan is not None:
+        facts["stop_needed"] = fplan["stop_needed"]
+        facts["arrive_gal"] = round(fplan["arrive_gal"], 1)
+        if _app_chose:
+            facts["gallons_to_buy"] = g
+    return facts
 
 
 def show_reply(msg):
