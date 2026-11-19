@@ -264,7 +264,9 @@ with strip_row.popover("Pick your car", icon=":material/directions_car:"):
         st.caption(f"{car['label']}: city {car['city']}, combined {car['combined']}, "
                    f"highway {car['highway']} mpg (EPA label values; real mileage varies).")
     mpg = slider_with_number("Fuel economy (mpg)", 10.0, 60.0, DEFAULTS["mpg"], 0.5, "mpg")
-    tank = st.number_input("Tank size (gallons)", 5.0, 40.0, 13.0, 0.5, key="tank")
+    st.session_state.setdefault("tank", 13.0)
+    tank = st.number_input("Tank size (gallons)", min_value=5.0, max_value=40.0, step=0.5,
+                           key="tank")
     if car and car.get("vclass") and st.session_state.get("tank_applied") == car["id"]:
         st.caption(f"Estimated from the EPA size class ({car['vclass']}); check your manual.")
     st.caption(f"About {tank * mpg:.0f} miles on a full tank at this mpg.")
@@ -278,12 +280,14 @@ with strip_row.popover("How much fuel do you have?", icon=":material/local_gas_s
     fuel_mode = None
     fuel_value = None
     if fuel_input_mode == "Fuel gauge":
+        st.session_state.setdefault("fuel_level_eighths", "1/2")
         gauge_label = st.select_slider("Fuel gauge", options=GAUGE_LEVELS,
-                                       value="1/2", key="fuel_level_eighths")
+                                       key="fuel_level_eighths")
         fuel_mode, fuel_value = "gauge", GAUGE_LEVELS.index(gauge_label)
     elif fuel_input_mode == "Miles left":
-        fuel_value = st.number_input("Miles until the reserve light", 0.0, 900.0, 50.0, 5.0,
-                                     key="fuel_miles_left")
+        st.session_state.setdefault("fuel_miles_left", 50.0)
+        fuel_value = st.number_input("Miles until the reserve light", min_value=0.0,
+                                     max_value=900.0, step=5.0, key="fuel_miles_left")
         fuel_mode = "miles"
     else:
         st.caption("Optional. Tell the app how much fuel you have and it can plan how much "

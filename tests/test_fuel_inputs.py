@@ -93,3 +93,32 @@ def test_a_hand_edited_tank_survives_later_reruns(monkeypatch, fresh_cache):
     app.number_input(key="tank").set_value(31.0).run()
     app.sidebar.slider(key="gallons").set_value(12.0).run()
     assert app.number_input(key="tank").value == 31.0
+
+
+@pytest.fixture(autouse=True)
+def rearm_default_value_warning(monkeypatch):
+    """Streamlit shows that warning once per process; re-arm it so each test can see it."""
+    from streamlit.elements.lib import policies
+    monkeypatch.setattr(policies, "_shown_default_value_warning", False)
+
+
+def session_state_warnings(caplog):
+    """Streamlit logs "created with a default value but also had its value set via the
+    Session State API" (and shows it as a warning box in the real app)."""
+    return [r.getMessage() for r in caplog.records if "Session State API" in r.getMessage()]
+
+
+def test_no_session_state_default_warning_for_the_tank(monkeypatch, fresh_cache, caplog):
+    monkeypatch.setattr(fueleconomy, "_get", fake_get_for(PICKUP))
+    app = AppTest.from_file(str(APP), default_timeout=30)
+    app.run()
+    pick_car(app)
+    assert session_state_warnings(caplog) == []
+
+
+@pytest.mark.parametrize("session", [
+    {"fuel_input_mode": "Fuel gauge", "fuel_level_eighths": "1/4"},
+    {"fuel_input_mode": "Miles left", "fuel_miles_left": 120.0}])
+def test_no_session_state_default_warning_for_the_fuel_inputs(monkeypatch, caplog, session):
+    make_app(monkeypatch, session=session)
+    assert session_state_warnings(caplog) == []
