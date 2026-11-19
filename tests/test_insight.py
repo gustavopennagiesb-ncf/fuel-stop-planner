@@ -138,3 +138,11 @@ def test_missing_prices_give_nothing_to_show():
     assert insight.corridor_vs_state([], 3.73) is None
     assert insight.corridor_vs_state([3.6], None) is None
     assert insight.corridor_vs_state([3.6], float("nan")) is None
+
+
+def test_flip_point_accepts_a_per_station_mapping():
+    import services
+    sts = [s for s in services.load_trip(None, None, 3000, provider="fixture")["stations"]
+           if s["price"] is not None]
+    assert insight.flip_point(sts, 3.5, {s["id"]: 10 for s in sts}, 27, 45) == \
+        insight.flip_point(sts, 3.5, 10, 27, 45)

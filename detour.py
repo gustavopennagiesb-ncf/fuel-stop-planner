@@ -33,10 +33,16 @@ def rank_stations(stations, p_ref, gallons, mpg, value_of_time, speed_mph):
 
     If a station already carries 'extra_miles'/'extra_minutes' (e.g. from the Routes API)
     those are used. Otherwise they are approximated as out-and-back off the route.
+
+    `gallons` is one number for every station, or a {station_id: gallons} mapping; a station
+    missing from the mapping is skipped. Each row carries the gallons used.
     """
     out = []
     for s in stations:
         if s.get("price") is None:
+            continue
+        g = gallons.get(s["id"]) if isinstance(gallons, dict) else gallons
+        if g is None:
             continue
         miles = s.get("extra_miles")
         if miles is None:
@@ -44,9 +50,9 @@ def rank_stations(stations, p_ref, gallons, mpg, value_of_time, speed_mph):
         minutes = s.get("extra_minutes")
         if minutes is None:
             minutes = miles / speed_mph * 60
-        nb = net_benefit(gallons, p_ref, s["price"], miles, minutes, mpg, value_of_time)
+        nb = net_benefit(g, p_ref, s["price"], miles, minutes, mpg, value_of_time)
         out.append({**s, "extra_miles": round(miles, 2), "extra_minutes": round(minutes, 1),
-                    "net_benefit": round(nb, 2)})
+                    "net_benefit": round(nb, 2), "gallons": round(g, 1)})
     return sorted(out, key=lambda r: r["net_benefit"], reverse=True)
 
 

@@ -73,7 +73,9 @@ def flip_point(stations, p_ref, gallons, mpg, speed_mph, vot_values=VOT_GRID):
     when it does not change up to vot_values[-1].
 
     Net benefit is a straight line in the value of time, so the crossing is exact (to the
-    cent), not just the grid step where the ranking was seen to differ."""
+    cent), not just the grid step where the ranking was seen to differ.
+
+    `gallons` is one number or a {station_id: gallons} mapping, passed to rank_stations as is."""
     ranked = detour.rank_stations(stations, p_ref, gallons, mpg, vot_values[0], speed_mph)
     if len(ranked) < 2:
         return None

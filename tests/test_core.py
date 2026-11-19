@@ -395,3 +395,22 @@ def test_route_position_behind_the_start_is_zero_along():
     path = [(27.0, -82.0), (27.0, -81.9)]
     along, _ = geo.route_position((27.0, -82.05), path)
     assert along == 0.0
+
+
+def _fixture_stations():
+    return [s for s in load_trip(None, None, 3000, provider="fixture")["stations"]
+            if s["price"] is not None]
+
+
+def test_rank_stations_mapping_matches_a_uniform_number():
+    sts = _fixture_stations()
+    by_number = rank_stations(sts, 3.5, 10, 27, 19, 45)
+    by_map = rank_stations(sts, 3.5, {s["id"]: 10 for s in sts}, 27, 19, 45)
+    assert [r["net_benefit"] for r in by_number] == [r["net_benefit"] for r in by_map]
+    assert all(r["gallons"] == 10 for r in by_map)
+
+
+def test_rank_stations_skips_stations_without_gallons():
+    sts = _fixture_stations()
+    ranked = rank_stations(sts, 3.5, {sts[0]["id"]: 12}, 27, 19, 45)
+    assert [r["id"] for r in ranked] == [sts[0]["id"]] and ranked[0]["gallons"] == 12
