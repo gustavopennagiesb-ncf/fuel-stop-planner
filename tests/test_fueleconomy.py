@@ -56,6 +56,10 @@ def test_parse_vehicle_and_mpg_kinds():
     assert fe.mpg_for(v) == 26.0 and fe.mpg_for(v, "city") == 22.0 and fe.mpg_for(v, "highway") == 33.0
     with pytest.raises(ValueError):
         fe.mpg_for(v, "fast")
+    sized = {**CAMRY, "VClass": "Midsize Cars"}
+    assert fe.parse_vehicle(sized)["vclass"] == "Midsize Cars"
+    no_class = {k: x for k, x in CAMRY.items() if k != "VClass"}
+    assert fe.parse_vehicle(no_class)["vclass"] == ""
 
 
 def test_missing_or_zero_figures_fall_back_to_combined():

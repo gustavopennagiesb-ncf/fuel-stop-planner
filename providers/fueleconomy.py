@@ -3,7 +3,7 @@
 Flow: year -> make -> model -> options (the options value is the vehicle id) -> vehicle record.
 The record carries three EPA label figures: city08, highway08 and comb08 (55% city / 45%
 highway). For electric cars these are MPGe, not gallons, so callers must check `fuel_type`.
-The record has no tank size: the driver types it.
+The record has no tank size but carries the EPA size class, used to estimate one (fuelplan.tank_for_class).
 """
 import requests
 
@@ -72,7 +72,8 @@ def parse_vehicle(payload):
             "label": f"{payload.get('year', '?')} {payload.get('make', '?')} {payload.get('model', '?')}",
             "fuel_type": payload.get("fuelType") or "",
             "combined": _mpg(payload.get("comb08")), "city": _mpg(payload.get("city08")),
-            "highway": _mpg(payload.get("highway08"))}
+            "highway": _mpg(payload.get("highway08")),
+            "vclass": payload.get("VClass") or ""}
 
 
 def vehicle(vehicle_id, session=None):
