@@ -16,7 +16,7 @@ def md_escape(text):
     return _MD_SPECIAL.sub(r"\\\1", str(text))
 
 
-def _minutes(m):
+def minutes_label(m):
     """'under 1 min' instead of a confusing '0 min' for a very short detour."""
     return "under 1 min" if m < 0.5 else f"{m:.0f} min"
 
@@ -43,7 +43,7 @@ def summary(rec):
         return (f"Fill up at {md_escape(best['name'])}",
                 f"${best['price']:.2f}/gal. Stopping here saves about ${best['net_benefit']:.2f} "
                 f"after the detour ({best['extra_miles']:.1f} extra miles, "
-                f"{_minutes(best['extra_minutes'])}).")
+                f"{minutes_label(best['extra_minutes'])}).")
     if rec["verdict"] == "skip":
         nb = best["net_benefit"]
         saving_clause = (f"costs ${-nb:.2f} to detour" if nb < 0
@@ -67,7 +67,7 @@ def describe_cheapest(station, p_ref, recommended_id=None):
     outcome = (f"saves about ${net:.2f}" if net >= 0.005 else
                f"costs you about ${-net:.2f}" if net <= -0.005 else "breaks even")
     detail = (f"{gap_text} the usual price on your route, "
-              f"{_minutes(station['extra_minutes'])} detour. Stopping there {outcome}.")
+              f"{minutes_label(station['extra_minutes'])} detour. Stopping there {outcome}.")
     if recommended_id is not None and station["id"] == recommended_id:
         detail += " This is also the recommended stop."
     return (f"Cheapest gas on this route: {md_escape(station['name'])} at "

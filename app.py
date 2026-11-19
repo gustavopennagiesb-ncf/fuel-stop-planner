@@ -594,7 +594,8 @@ if _selected == ":material/local_gas_station: Where to stop":
                         st.metric("You save", f"${b['net_benefit']:.2f}", border=True,
                                   help="After the extra fuel and your time on the detour.")
                         st.metric("Detour", f"{b['extra_miles']:.1f} mi", border=True)
-                        st.metric("Extra time", f"{b['extra_minutes']:.0f} min", border=True)
+                        st.metric("Extra time", recommend.minutes_label(b["extra_minutes"]),
+                                  border=True)
                     maps_buttons(b, live)
             else:
                 with st.container(border=True, height="stretch"):
@@ -667,7 +668,7 @@ if _selected == ":material/local_gas_station: Where to stop":
                                     width="content")
                     st.markdown(f"**{recommend.md_escape(alt['name'])}**")
                     st.subheader(f"\\${alt['price']:.2f} :small[/gal]", anchor=False)
-                    st.caption(f"{alt['extra_minutes']:.0f} min detour")
+                    st.caption(f"{recommend.minutes_label(alt['extra_minutes'])} detour")
                     alt_pin = None
                     if live:
                         try:
