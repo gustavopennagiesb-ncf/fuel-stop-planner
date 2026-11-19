@@ -134,3 +134,40 @@ def test_describe_cheapest_above_the_usual_price_and_hostile_names():
     pricey = st("**$x$**", -0.1, price=3.70, minutes=0.2)
     head, detail = rc.describe_cheapest(pricey, p_ref=3.60, recommended_id=None)
     assert "\\*\\*\\$x\\$\\*\\*" in head and "$0.10 above" in detail and "under 1 min" in detail
+
+
+def test_no_stop_verdict_keeps_the_optional_best_deal():
+    ranked = [{"id": "a", "name": "A", "price": 3.0, "net_benefit": 2.0, "extra_miles": 1, "extra_minutes": 2}]
+    rec = rc.recommend(ranked, 0.5, stop_needed=False)
+    assert rec["verdict"] == "no_stop" and rec["best"]["id"] == "a"
+    assert rec["fuel_aware"] is True and rec["alternatives"] == []
+    title, body = rc.summary(rec)
+    assert title == "No stop needed"
+    assert "saves about $2.00" in body
+
+
+def test_no_stop_without_a_worthwhile_deal_or_stations():
+    weak = [{"id": "a", "name": "A", "price": 3.0, "net_benefit": 0.1, "extra_miles": 1, "extra_minutes": 2}]
+    for ranked in (weak, []):
+        rec = rc.recommend(ranked, 0.5, stop_needed=False)
+        assert rec["verdict"] == "no_stop" and rec["best"] is None
+        assert rc.summary(rec) == ("No stop needed", "")
+
+
+def test_go_title_names_the_gallons_when_fuel_aware():
+    best = {"id": "a", "name": "A*", "price": 3.0, "net_benefit": 2.0, "extra_miles": 1,
+            "extra_minutes": 2, "gallons": 9.5}
+    rec = rc.recommend([best], 0.5, stop_needed=True)
+    assert rec["fuel_aware"] is True
+    assert rc.summary(rec)[0] == "Fill up at A\\* · buy 9.5 gal"
+
+
+def test_stop_needed_none_is_todays_behaviour_even_with_gallons():
+    row = {"id": "a", "name": "A", "price": 3.0, "net_benefit": 2.0, "extra_miles": 1,
+           "extra_minutes": 2, "gallons": 9.5}
+    rec = rc.recommend([row], 0.5)
+    assert rec["fuel_aware"] is False
+    assert rc.summary(rec)[0] == "Fill up at A"
+    assert rc.recommend([], 0.5)["fuel_aware"] is False
+    skip = dict(row, net_benefit=0.1)
+    assert rc.recommend([skip], 0.5)["verdict"] == "skip"

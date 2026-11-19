@@ -21,26 +21,42 @@ def minutes_label(m):
     return "under 1 min" if m < 0.5 else f"{m:.0f} min"
 
 
-def recommend(ranked, min_saving=MIN_SAVING_DEFAULT, n_alternatives=3):
+def recommend(ranked, min_saving=MIN_SAVING_DEFAULT, n_alternatives=3, stop_needed=None):
+    """stop_needed: None = not fuel-aware (today's go/skip/none); False = the tank covers the
+    trip (verdict "no_stop", keeping the best deal as optional); True = a stop is needed."""
     floor = max(min_saving, 0.0)
+    fuel_aware = stop_needed is not None
 
     def worth(s):
         return s["net_benefit"] > 0 and s["net_benefit"] >= floor
 
+    def result(verdict, best, alts):
+        return {"verdict": verdict, "best": best, "alternatives": alts,
+                "min_saving": floor, "fuel_aware": fuel_aware}
+
+    if stop_needed is False:
+        return result("no_stop", ranked[0] if ranked and worth(ranked[0]) else None, [])
     if not ranked:
-        return {"verdict": "none", "best": None, "alternatives": [], "min_saving": floor}
+        return result("none", None, [])
     best = ranked[0]
     if not worth(best):
-        return {"verdict": "skip", "best": best, "alternatives": [], "min_saving": floor}
-    alts = [s for s in ranked[1:] if worth(s)][:n_alternatives]
-    return {"verdict": "go", "best": best, "alternatives": alts, "min_saving": floor}
+        return result("skip", best, [])
+    return result("go", best, [s for s in ranked[1:] if worth(s)][:n_alternatives])
 
 
 def summary(rec):
     """(title, body) shown in the recommendation card."""
     best = rec["best"]
+    if rec["verdict"] == "no_stop":
+        if best is None:
+            return ("No stop needed", "")
+        return ("No stop needed",
+                f"If you want to fill up anyway, the best deal is {md_escape(best['name'])} "
+                f"(saves about ${best['net_benefit']:.2f}).")
     if rec["verdict"] == "go":
-        return (f"Fill up at {md_escape(best['name'])}",
+        buy = (f" · buy {best['gallons']:.1f} gal"
+               if rec.get("fuel_aware") and "gallons" in best else "")
+        return (f"Fill up at {md_escape(best['name'])}{buy}",
                 f"${best['price']:.2f}/gal. Stopping here saves about ${best['net_benefit']:.2f} "
                 f"after the detour ({best['extra_miles']:.1f} extra miles, "
                 f"{minutes_label(best['extra_minutes'])}).")
