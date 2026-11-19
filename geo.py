@@ -57,8 +57,8 @@ def path_length_m(path: list) -> float:
     return sum(haversine_m(path[i], path[i + 1]) for i in range(len(path) - 1))
 
 
-def dist_point_segment_m(p: tuple, a: tuple, b: tuple) -> float:
-    """Point-to-segment distance using a local equirectangular projection."""
+def _project(p: tuple, a: tuple, b: tuple) -> tuple:
+    """Project p on segment a-b (local equirectangular): (t clamped to 0..1, distance in m)."""
     k = math.cos(math.radians(p[0]))
 
     def xy(q):
@@ -68,7 +68,28 @@ def dist_point_segment_m(p: tuple, a: tuple, b: tuple) -> float:
     bx, by = xy(b)
     dx, dy = bx - ax, by - ay
     t = 0.0 if dx == dy == 0 else max(0.0, min(1.0, -(ax * dx + ay * dy) / (dx * dx + dy * dy)))
-    return math.hypot(ax + t * dx, ay + t * dy)
+    return t, math.hypot(ax + t * dx, ay + t * dy)
+
+
+def dist_point_segment_m(p: tuple, a: tuple, b: tuple) -> float:
+    """Point-to-segment distance using a local equirectangular projection."""
+    return _project(p, a, b)[1]
+
+
+def route_position(point: tuple, path: list) -> tuple:
+    """(along_m, off_m): metres from the path start to the point's projection on the
+    nearest segment, and the distance from the point to that segment."""
+    if len(path) < 2:
+        return 0.0, (haversine_m(point, path[0]) if path else 0.0)
+    best_off, best_along, before = math.inf, 0.0, 0.0
+    for i in range(len(path) - 1):
+        a, b = path[i], path[i + 1]
+        seg = haversine_m(a, b)
+        t, d = _project(point, a, b)
+        if d < best_off:
+            best_off, best_along = d, before + t * seg
+        before += seg
+    return best_along, best_off
 
 
 def corridor_filter(stations: list, path: list, buffer_m: float = 1500) -> list:

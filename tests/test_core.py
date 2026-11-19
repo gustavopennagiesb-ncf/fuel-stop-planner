@@ -6,6 +6,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 import numpy as np
 import pytest
 
+import geo
 from detour import breakeven_miles, net_benefit, rank_stations, reference_price, sensitivity_table
 from forecast import lagged_corr, rolling_origin_eval, treat_series, weekly_changes_outliers
 from geo import corridor_filter, decode_polyline, encode_polyline, haversine_m, path_length_m
@@ -380,3 +381,17 @@ def test_net_benefit_never_exceeds_the_gross_saving():
                 for i, (p, off) in enumerate([(3.3, 0.0), (3.5, 50.0), (3.4, 4000.0)])]
     for r in d.rank_stations(stations, 3.70, 10.0, 27.2, 19.0, 45.0):
         assert r["net_benefit"] <= round(10.0 * (3.70 - r["price"]), 2) + 1e-9
+
+
+def test_route_position_on_a_two_segment_path():
+    path = [(27.0, -82.0), (27.0, -81.9), (27.1, -81.9)]
+    along, off = geo.route_position((27.0005, -81.95), path)
+    seg1 = geo.haversine_m(path[0], path[1])
+    assert along == pytest.approx(seg1 / 2, rel=0.02)
+    assert off == pytest.approx(55, abs=10)  # ~0.0005 deg of latitude
+
+
+def test_route_position_behind_the_start_is_zero_along():
+    path = [(27.0, -82.0), (27.0, -81.9)]
+    along, _ = geo.route_position((27.0, -82.05), path)
+    assert along == 0.0
