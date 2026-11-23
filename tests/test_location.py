@@ -80,7 +80,7 @@ def make_app(monkeypatch, *, mode, fix=None, session=None):
 
         monkeypatch.setattr(services, "load_trip", fake_trip)
         monkeypatch.setattr(services, "load_series", lambda p: real_series("fixture"))
-        monkeypatch.setattr(services, "compute_detours", lambda trip, top_n=None: trip["stations"])
+        monkeypatch.setattr(services, "compute_detours", lambda trip, **kw: trip["stations"])
     monkeypatch.setattr(location, "request_location", lambda key: fix)
     app = AppTest.from_file(str(APP), default_timeout=30)
     for k, v in (session or {}).items():

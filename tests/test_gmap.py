@@ -33,3 +33,11 @@ def test_no_best_id_marks_nothing():
     ranked = [{"id": "p1", "name": "A", "price": 3.5, "net_benefit": 1.0, "lat": 27.0, "lng": -82.0}]
     html = build_map_html("key", [(27.0, -82.0)], ranked)
     assert '"best": true' not in html
+
+
+def test_the_compact_map_is_a_static_preview():
+    from gmap import build_map_html
+    s = {"id": "a", "name": "A", "lat": 27.5, "lng": -82.4, "price": 3.3, "net_benefit": 0.5}
+    small = build_map_html("k", [(27.3, -82.5), (27.6, -82.3)], [s], best_id="a", compact=True)
+    big = build_map_html("k", [(27.3, -82.5), (27.6, -82.3)], [s], best_id="a")
+    assert "const COMPACT = true;" in small and "const COMPACT = false;" in big

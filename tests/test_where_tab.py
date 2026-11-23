@@ -53,7 +53,7 @@ def make_app(monkeypatch, *, mode="fixture", stations=None, session=None, rename
         monkeypatch.setattr(config, "PROVIDER", "google")
         monkeypatch.setattr(config, "GOOGLE_API_KEY", "test-key")
         monkeypatch.setattr(config, "EIA_API_KEY", "test-key")
-        monkeypatch.setattr(services, "compute_detours", lambda trip, top_n=None: trip["stations"])
+        monkeypatch.setattr(services, "compute_detours", lambda trip, **kw: trip["stations"])
     app = AppTest.from_file(str(APP), default_timeout=30)
     for k, v in (session or {}).items():
         app.session_state[k] = v

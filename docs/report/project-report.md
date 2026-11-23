@@ -53,13 +53,15 @@ the fields above are requested and billed.
 
 ![EDA tab](../screenshots/04-eda.jpg)
 
-The Florida and U.S. weekly series cover **1,246 weeks** (2003 to 2026). The EDA tab reports the
-cleaning rather than hiding it: **20 missing weeks** were filled by linear interpolation and
-**19 price shocks** were flagged at a threshold the user can move (default: 3 standard
-deviations of the weekly change). Outlier treatment is a choice offered to the user, "keep" or
-"interpolate", because a price shock in gasoline is often a real event rather than an error.
-The before/after means and standard deviations are printed so the effect of the treatment is
-visible (mean 2.801 → 2.779, SD 0.651 → 0.668).
+The U.S. weekly series covers **1,246 weeks** (2003 to 2026); EIA's Florida series starts later,
+on 26 May 2003, so the EDA uses the **1,226 weeks** both share. An earlier version counted the 20
+U.S.-only weeks as "missing" and filled them by copying the first Florida price backwards, which
+invented data and lowered the mean (2.801 → 2.779); validating the series against the EIA API
+showed there is no gap inside it, so those weeks are now left out and reported as such. **18 price
+shocks** are flagged at a threshold the user can move (default: 3 standard deviations of the weekly
+change). Outlier treatment is a choice offered to the user, "keep" or "interpolate", because a
+price shock in gasoline is often a real event rather than an error. The before/after means and
+standard deviations are printed so the effect of the treatment is visible.
 
 Weekly *changes* in Florida and U.S. prices correlate at **r = 0.799**, and the lead-lag analysis
 puts the strongest link at **lag 0**: Florida moves with the national market in the same week,
@@ -107,9 +109,20 @@ net benefit = gallons × (reference price − station price)
 ```
 
 The *reference price* is the median price of stations within 800 m of the route: what the same
-fill-up costs without leaving the route. Exact detours come from the Routes API for the cheapest
-candidates, using a `via` waypoint; the rest use an out-and-back estimate, and the table says
-which was used for each row.
+fill-up costs without leaving the route. Detours for the best-ranked candidates are measured with
+the Routes API on a 10 km stretch of road around each station, with and without the station as a
+waypoint; the rest use an out-and-back estimate, and the table says which was used for each row.
+Every stop means leaving the road, a stop on the route too, so the smallest measured detour is
+subtracted from every measured one.
+
+Validating this against live data changed the method twice. A first version asked Routes for the
+whole trip through the station: Google then picked a different road for the entire trip (up to
+14 km away from the direct route), so the "detour" measured a route change, 0 extra miles and
+11 to 16 extra minutes for every station. A second finding was that the straight out-and-back
+estimate is optimistic: on Sarasota → Orlando it gave the recommended Mobil 0.4 mi and under a
+minute, while the road around it took 1.4 mi and 8 minutes. The app now measures stations in
+the order the estimate ranks them and re-ranks after each, so the recommendation is a measured
+one.
 
 How often does price alone pick the wrong station? The app measures it. The same stations are
 re-ranked across a grid of fill sizes (5 to 20 gallons) and values of time ($0 to $40/h), which
@@ -186,8 +199,9 @@ and checks each against the facts within a rounding tolerance. If any number can
 the app retries once and then falls back to a deterministic template.
 
 This makes hallucination **measurable, not hypothetical**: every answer from the assistant
-(a chat panel available on every page) carries a badge with the share of numbers that were
-traceable on the first attempt, the number of attempts, and whether the fallback was used. A
+(a chat panel available on every page) carries a badge saying all its numbers were traced, plus
+the share that was traceable on the first attempt when a retry was needed, the number of
+attempts, and whether the fallback was used. A
 failed API call (wrong key, no credit, network) is reported on screen, so a broken integration
 can never be mistaken for a working one.
 
@@ -234,10 +248,10 @@ minutes; and the address autocomplete manages its own billing session.
 - The fuel plan rests on assumptions, labelled as such: a reserve of 15% of the tank (at least
   2 gallons), tank sizes estimated from the EPA size class, and one stop per trip (a trip longer
   than a full tank gets a warning, not a multi-stop plan).
-- The detour for most stations is an out-and-back approximation; only the cheapest candidates get
-  an exact route, to cap API cost. As a result the measured share of wrong picks mixes two detour
-  methods: exact Routes detours for the cheapest handful of priced stations, an out-and-back
-  estimate for the rest.
+- The detour for most stations is an out-and-back approximation, which is optimistic (it ignores
+  exits and lights); only the ten best-ranked stations are measured on roads, to cap API cost. As a
+  result the measured share of wrong picks mixes two detour methods. Measured detours are
+  traffic-unaware and relative to the easiest stop found.
 - Station prices come from Google and can be stale; every price is editable in the interface.
 - Fuel price data is Florida and U.S. only.
 

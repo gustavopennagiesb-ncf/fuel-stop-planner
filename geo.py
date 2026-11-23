@@ -103,6 +103,20 @@ def corridor_filter(stations: list, path: list, buffer_m: float = 1500) -> list:
     return sorted(out, key=lambda r: r["off_route_m"])
 
 
+def point_along(path: list, m: float) -> tuple:
+    """The point m metres from the start of the path, clamped to its ends."""
+    if m <= 0 or len(path) < 2:
+        return tuple(path[0])
+    acc = 0.0
+    for a, b in zip(path, path[1:]):
+        seg = haversine_m(a, b)
+        if acc + seg >= m:
+            t = (m - acc) / seg if seg else 0.0
+            return (a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1]))
+        acc += seg
+    return tuple(path[-1])
+
+
 def sample_points(path: list, every_m: float) -> list:
     """Points spaced roughly every_m along the path (used to query Places near the route)."""
     pts, acc = [path[0]], 0.0

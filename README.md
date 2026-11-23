@@ -61,9 +61,14 @@ PROVIDER=google streamlit run app.py   # app.py reads .env itself; shell variabl
 In `google` mode (day-1 check passed: Places returns U.S. fuel prices):
 - Stations come from Places around points sampled along the Routes polyline (at most
   `MAX_PLACES_CALLS` calls), filtered to the corridor.
-- Exact detours use Routes with a `via` waypoint for the `MAX_ROUTE_CALLS` cheapest priced
-  stations, memoized for 10 minutes so moving a slider does not bill again. Other stations (or a
-  failed call) use the out-and-back estimate; the `detour_source` column says which.
+- Detours are measured with Routes on a 10 km stretch of road around each station (5 km before
+  and after, with and without the station as a `via` waypoint; 2 calls each, without traffic).
+  A `via` on the whole trip is not used: it can make Routes pick another road for the whole trip.
+  Every stop means leaving the road, so the smallest measured detour (the station closest to the
+  route is always measured) is subtracted. Up to `MAX_ROUTE_CALLS` stations are measured, always
+  the best-ranked one not yet measured, re-ranking after each, so the top of the ranking is
+  measured; results are memoized for 10 minutes so moving a slider does not bill again. Other
+  stations (or a failed call) use the out-and-back estimate; the `detour_source` column says which.
 - Stations are drawn on a Google map when `GOOGLE_MAPS_JS_KEY` is set (required by Google's terms);
   without it only the table is shown. Missing `GOOGLE_API_KEY` falls back to fixture data with a
   warning, and any load error falls back to fixtures instead of crashing.

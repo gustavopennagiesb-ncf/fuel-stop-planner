@@ -470,3 +470,23 @@ def test_sensitivity_prices_each_column_at_the_cheaper_station():
     for vot, row in t.items():
         for gap, miles in row.items():
             assert miles == round(breakeven_miles(10, gap, ref - gap, 27.2, vot, 45), 1)
+
+
+def test_point_along_walks_the_path_and_clamps():
+    from geo import haversine_m, point_along
+    path = [(27.0, -82.0), (27.1, -82.0), (27.2, -82.0)]
+    leg = haversine_m(path[0], path[1])
+    assert point_along(path, -5) == path[0]
+    assert point_along(path, 10 ** 9) == path[-1]
+    mid = point_along(path, leg * 1.5)
+    assert mid[0] == pytest.approx(27.15) and mid[1] == pytest.approx(-82.0)
+
+
+def test_treat_series_trims_weeks_before_the_series_starts_instead_of_inventing_them():
+    import pandas as pd
+    y = pd.Series([np.nan, np.nan, 3.0, np.nan, 3.2, 3.3],
+                  index=pd.date_range("2003-01-06", periods=6, freq="W-MON"))
+    out, rep = treat_series(y)
+    assert rep["n_trimmed"] == 2 and rep["n_missing_filled"] == 1
+    assert rep["start"] == "2003-01-20" and len(out) == 4
+    assert out.iloc[1] == pytest.approx(3.1)

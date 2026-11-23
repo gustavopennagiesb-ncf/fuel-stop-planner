@@ -60,24 +60,32 @@ def weekly_changes_outliers(y, z=3.0):
 def treat_series(s, z=3.0, outliers="keep"):
     """Missing-data and outlier treatment for a weekly price series (pandas Series).
 
-    Missing weeks are filled by time-ordered linear interpolation (edges by nearest value).
+    Weeks before the first or after the last published value are not missing data (the series
+    simply starts later, e.g. EIA's Florida series begins in May 2003): they are trimmed, not
+    invented, and counted in `n_trimmed`. Gaps inside the series are filled by time-ordered
+    linear interpolation.
     Weekly changes beyond `z` SD are always *flagged*. outliers="keep" leaves them (price
     shocks are real events); "interpolate" replaces the flagged weeks by the mean of their
     neighbours. Returns (cleaned_series, report dict) so the UI can show before/after.
     """
     import pandas as pd
     s = pd.Series(s, dtype=float)
+    n_all = len(s)
+    first, last = s.first_valid_index(), s.last_valid_index()
+    s = s.loc[first:last] if first is not None else s.iloc[0:0]
     n_missing = int(s.isna().sum())
-    filled = s.interpolate(method="linear", limit_direction="both")
+    filled = s.interpolate(method="linear", limit_area="inside")
     idx = weekly_changes_outliers(filled.to_numpy(), z)
     cleaned = filled.copy()
     if outliers == "interpolate" and len(idx):
         mask = pd.Series(False, index=s.index)
         mask.iloc[idx] = True
-        cleaned = cleaned.mask(mask).interpolate(method="linear", limit_direction="both")
+        cleaned = cleaned.mask(mask).interpolate(method="linear", limit_direction="both")  # edge shocks: nearest week
     elif outliers not in ("keep", "interpolate"):
         raise ValueError("outliers must be 'keep' or 'interpolate'")
-    report = {"n_missing_filled": n_missing, "n_outliers_flagged": int(len(idx)),
+    report = {"n_missing_filled": n_missing, "n_trimmed": n_all - len(s),
+              "start": str(first.date()) if hasattr(first, "date") else str(first),
+              "n_outliers_flagged": int(len(idx)),
               "outlier_weeks": [str(s.index[i]) for i in idx],
               "outlier_treatment": outliers,
               "mean_before": round(float(s.mean()), 4), "mean_after": round(float(cleaned.mean()), 4),

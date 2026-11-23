@@ -13,8 +13,11 @@ TEMPLATE = """<!doctype html><html><head><meta charset="utf-8">
 <script>
 const ROUTE = __ROUTE__;
 const STATIONS = __STATIONS__;
+const COMPACT = __COMPACT__;
 function initMap() {
-  const map = new google.maps.Map(document.getElementById("map"), {mapTypeControl: false});
+  const map = new google.maps.Map(document.getElementById("map"),
+    COMPACT ? {disableDefaultUI: true, gestureHandling: "none", keyboardShortcuts: false}
+            : {mapTypeControl: false});
   const bounds = new google.maps.LatLngBounds();
   ROUTE.forEach(p => bounds.extend(p));
   new google.maps.Polyline({path: ROUTE, map: map, strokeColor: "#1f77b4", strokeWeight: 4});
@@ -34,7 +37,7 @@ function initMap() {
       label: {text: s.price, fontSize: s.best ? "12px" : "11px", fontWeight: "bold",
               color: s.best ? "#ffffff" : "#000000"}});
     m.addListener("click", () => show(m, s));
-    if (s.best) { show(m, s); }
+    if (s.best && !COMPACT) { show(m, s); }
     bounds.extend(pos);
   });
   map.fitBounds(bounds);
@@ -50,9 +53,10 @@ def _js(obj):
             .replace("\u2028", "\\u2028").replace("\u2029", "\\u2029"))
 
 
-def build_map_html(js_key, path, ranked, best_id=None):
+def build_map_html(js_key, path, ranked, best_id=None, compact=False):
     """path: [(lat, lng)]; ranked: stations with name, price, net_benefit, lat, lng; the station
-    whose id is `best_id` (the recommendation) is drawn larger and its details open."""
+    whose id is `best_id` (the recommendation) is drawn larger and its details open.
+    compact: a small static preview (no controls, no panning, details not opened)."""
     route = [{"lat": lat, "lng": lng} for lat, lng in path]
     stations = [{"lat": r["lat"], "lng": r["lng"], "name": r["name"],
                  "best": best_id is not None and r.get("id") == best_id,
@@ -60,4 +64,5 @@ def build_map_html(js_key, path, ranked, best_id=None):
                  "text": f"{r['name']}: ${r['price']:.2f}/gal (saves ${r['net_benefit']:.2f})"}
                 for r in ranked]
     return (TEMPLATE.replace("__ROUTE__", _js(route)).replace("__STATIONS__", _js(stations))
+            .replace("__COMPACT__", "true" if compact else "false")
             .replace("__KEY__", quote(js_key, safe="")))

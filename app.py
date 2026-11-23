@@ -536,7 +536,13 @@ priced = [{**s, "price": (None if pd.isna(_price_by_id.get(s["id"])) else
 p_ref = reference_price(priced)
 if p_ref is None:
     p_ref = float(st.session_state.get("p_ref_manual", 3.6))
-detoured = compute_detours({**trip, "stations": priced})
+# Routes measures the stations the estimate ranks best (re-ranking after each), so the stations
+# at the top of the ranking, the recommendation included, carry a measured detour.
+detoured = compute_detours(
+    {**trip, "stations": priced},
+    priority=lambda sts: [r["id"] for r in rank_stations(
+        sts, p_ref, float(st.session_state.get("gallons", DEFAULTS["gallons"])),
+        mpg, vot, speed)])
 tmiles = fuelplan.trip_miles(trip["path"]) if trip.get("path") else 0.0
 _gallons_slider = float(st.session_state.get("gallons", DEFAULTS["gallons"]))
 # With a fuel level set, the plan always runs: unreachable stations are dropped before ranking
@@ -715,7 +721,12 @@ if _selected == ":material/local_gas_station: Where to stop":
                     tiles += [("Price", f"${b['price']:.2f}/gal", None),
                               ("You save", f"${b['net_benefit']:.2f}",
                                "After the extra fuel and your time on the detour."),
-                              ("Detour", f"{b['extra_miles']:.1f} mi", None),
+                              ("Detour", f"{b['extra_miles']:.1f} mi",
+                               "Measured with Google Routes on the road around the station, "
+                               "beyond the exit any stop needs."
+                               if b.get("detour_source") == "routes" else
+                               "Estimated as a straight out-and-back from the route, not "
+                               "measured on roads."),
                               ("Extra time", recommend.minutes_label(b["extra_minutes"]), None)]
                     # Even rows (2 + 2, or 3 + 2) instead of a row that wraps to 3 + 1.
                     split = 2 if len(tiles) == 4 else 3
@@ -759,13 +770,21 @@ if _selected == ":material/local_gas_station: Where to stop":
         if hero_right is not None:
             with hero_right, st.container(border=True, height="stretch"):
                 me = st.session_state.get("my_location") if live else None
-                st.plotly_chart(minimap(trip["path"], me, rec["best"] if best_id else None,
-                                        height=300),
-                                width="stretch", key="hero_minimap",
-                                config={"displayModeBar": False, "staticPlot": True},
-                                alt="Small map of the route" + (" and the recommended stop"
-                                                                if best_id else ""))
-                st.caption(html.escape(_route) + (" · blue dot: recommended stop" if best_id
+                if trip["mode"] != "google":
+                    st.plotly_chart(minimap(trip["path"], me, rec["best"] if best_id else None,
+                                            height=300),
+                                    width="stretch", key="hero_minimap",
+                                    config={"displayModeBar": False, "staticPlot": True},
+                                    alt="Small map of the route" + (" and the recommended stop"
+                                                                    if best_id else ""))
+                elif config.GOOGLE_MAPS_JS_KEY:
+                    # Google route and Places content must be shown on a Google map.
+                    st.iframe(build_map_html(config.GOOGLE_MAPS_JS_KEY, trip["path"],
+                                             [rec["best"]] if best_id else [], best_id=best_id,
+                                             compact=True), height=300,
+                              alt="Small Google map of the route" + (
+                                  " and the recommended stop" if best_id else ""))
+                st.caption(html.escape(_route) + (" · large dot: recommended stop" if best_id
                                                   else ""))
         if fplan is not None and fplan["tank_too_small"]:
             st.caption(f"Your tank looks bigger than {tank:g} gal: check Tank size under "
@@ -983,8 +1002,10 @@ if _selected == ":material/local_gas_station: Where to stop":
                 "− cost of your time on the detour.\n\n"
                 "The **price difference** is compared against the typical price at stations "
                 "right on your route (or a price you type in). "
-                "The **detour cost** uses real routing for the top stations and a straight "
-                "out-and-back estimate for the rest. "
+                "The **detour cost** uses real routing (Google Routes over the stretch of road "
+                "around the station) for the best-ranked stations and a straight out-and-back "
+                "estimate for the rest. Every stop means leaving the road, a stop on your route "
+                "too, so the detour counts only what a station adds over the easiest stop. "
                 "The **time cost** uses the value you set in the sidebar.")
 
 # ---------------------------------------------------------------- when to fill up
@@ -1073,9 +1094,9 @@ elif _selected == ":material/analytics: EDA":
     if True:
         raw = series["florida"]
         clean, rep = treat_series(raw, z=z_thr, outliers=treat)
-        d = series.copy()
+        d = series.loc[clean.index].copy()   # the weeks Florida is published
         d["florida"] = clean
-        d = d.interpolate(limit_direction="both")
+        d = d.interpolate(limit_area="inside")
 
         # ---- 1. Data quality ------------------------------------------------
         st.markdown("#### 1. Data quality")
@@ -1084,7 +1105,9 @@ elif _selected == ":material/analytics: EDA":
         c2.metric("Missing weeks filled", rep["n_missing_filled"], border=True)
         c3.metric("Price shocks flagged", rep["n_outliers_flagged"], border=True)
         c4.metric("Latest Florida", f"${clean.iloc[-1]:.2f}", border=True)
-        st.caption(f"Treatment: missing weeks by linear interpolation; outliers: {treat}. Mean "
+        st.caption((f"The Florida series starts on {rep['start']}; the {rep['n_trimmed']} "
+                    "earlier U.S.-only weeks are left out, not filled. " if rep["n_trimmed"] else "")
+                   + f"Treatment: missing weeks by linear interpolation; outliers: {treat}. Mean "
                    f"{rep['mean_before']:.3f} → {rep['mean_after']:.3f}, SD "
                    f"{rep['std_before']:.3f} → {rep['std_after']:.3f} (before → after).")
 
@@ -1138,15 +1161,17 @@ elif _selected == ":material/analytics: EDA":
             st.plotly_chart(_fig_sc, width="stretch",
                             alt="Scatter plot of Florida vs US weekly prices with OLS trendline")
         st.plotly_chart(
-            px.histogram(ch, nbins=60,
-                         title="Distribution of weekly price changes ($/gal)"),
+            px.histogram(ch, nbins=60, title="Distribution of weekly price changes ($/gal)",
+                         labels={"value": "Weekly change ($/gal)", "variable": "Series"})
+            .update_layout(yaxis_title="Weeks", showlegend=False),
             width="stretch",
             alt="Histogram of weekly price changes in dollars per gallon")
         prices = [s["price"] for s in priced if s["price"]]
         if prices:
             st.plotly_chart(
-                px.histogram(prices, nbins=20,
-                             title="Station price spread on this route"),
+                px.histogram(x=prices, nbins=20, title="Station price spread on this route",
+                             labels={"x": "Price ($/gal)"})
+                .update_layout(yaxis_title="Stations", showlegend=False),
                 width="stretch",
                 alt="Histogram of station prices on this route")
             st.write(f"Station spread: min ${min(prices):.2f}, max ${max(prices):.2f}, "
@@ -1268,11 +1293,14 @@ def show_reply(msg):
     elif msg["source"] == "template":
         badge = ":gray-badge[:material/description: Template answer]"
     else:
-        rate = msg.get("traceable_first_try")
-        badge = f":green-badge[:material/verified: {(1.0 if rate is None else rate):.0%} of numbers traced]"
+        # Shown only after it passed validation: every number in it is traced.
+        badge = ":green-badge[:material/verified: All numbers traced]"
     attempts = msg.get("attempts") or 0
+    rate = msg.get("traceable_first_try")
+    first = (f" · first try {rate:.0%} of numbers traced, retried"
+             if rate is not None and rate < 1 and not msg.get("fallback_used") else "")
     detail = f"{msg['source']}" + (f" · {attempts} attempt{'s' if attempts != 1 else ''}"
-                                   if attempts else "")
+                                   if attempts else "") + first
     st.markdown(f"{badge} :small[{detail}]")
 
 
