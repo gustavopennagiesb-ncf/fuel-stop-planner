@@ -56,8 +56,9 @@ def rank_stations(stations, p_ref, gallons, mpg, value_of_time, speed_mph):
     return sorted(out, key=lambda r: r["net_benefit"], reverse=True)
 
 
-def sensitivity_table(gallons, p_station, mpg, speed_mph, gaps=(0.10, 0.20, 0.30, 0.50),
+def sensitivity_table(gallons, p_ref, mpg, speed_mph, gaps=(0.10, 0.20, 0.30, 0.50),
                       values_of_time=(0, 10, 19, 30)):
-    """Break-even miles for a grid of price gaps (columns) and values of time (rows)."""
-    return {vot: {g: round(breakeven_miles(gallons, g, p_station, mpg, vot, speed_mph), 1)
+    """Break-even miles for a grid of price gaps (columns) and values of time (rows). A gap of
+    g means the station costs p_ref - g, which is also the price of the fuel the detour burns."""
+    return {vot: {g: round(breakeven_miles(gallons, g, p_ref - g, mpg, vot, speed_mph), 1)
                   for g in gaps} for vot in values_of_time}

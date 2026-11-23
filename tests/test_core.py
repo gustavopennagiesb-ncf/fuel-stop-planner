@@ -461,3 +461,12 @@ def test_template_follows_a_skip_verdict_with_a_small_positive_saving():
     text = template_explanation(facts)
     assert "Stop at" not in text and "below your minimum" in text
     assert validate(text, facts) == (1.0, [])
+
+
+def test_sensitivity_prices_each_column_at_the_cheaper_station():
+    """A gap of $0.30 means the station costs ref - 0.30, and the detour's fuel is bought there."""
+    ref = 3.53
+    t = sensitivity_table(10, ref, 27.2, 45)
+    for vot, row in t.items():
+        for gap, miles in row.items():
+            assert miles == round(breakeven_miles(10, gap, ref - gap, 27.2, vot, 45), 1)

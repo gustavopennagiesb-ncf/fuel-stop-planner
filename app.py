@@ -747,16 +747,20 @@ if _selected == ":material/local_gas_station: Where to stop":
             nb = rec["best"]["net_benefit"] if rec["verdict"] == "go" else 0.0
             with st.container(border=True):
                 card_header("Your trip at a glance", "What the whole drive costs in fuel, and "
-                            "what the recommended stop takes off it.", ":material/route:")
+                            "what the recommended stop saves on the fill-up you buy.",
+                            ":material/route:")
                 with st.container(horizontal=True, gap="small"):
                     st.metric("Estimated trip fuel cost", f"${trip_cost:.2f}", border=True,
-                              help=f"{trip_miles:.0f} mi ÷ {mpg:.0f} mpg × ${p_ref:.2f}/gal "
+                              help=f"{trip_miles:.0f} mi ÷ {mpg:.1f} mpg × ${p_ref:.2f}/gal "
                                    f"(route median price)")
                     st.metric("Potential savings", f"${max(nb, 0):.2f}",
-                              delta=f"-${max(nb, 0):.2f} off your trip" if nb > 0 else None,
-                              delta_color="inverse", border=True,
-                              help="Net benefit of the recommended stop after detouring cost and "
-                                   "your value of time. $0.00 means no detour pays off.")
+                              delta=(f"on this fill-up ({gallons_used:g} gal)" if nb > 0
+                                     else None),
+                              delta_color="normal", delta_arrow="off", border=True,
+                              help=f"Total for the {gallons_used:g} gallons you buy, not per "
+                                   "gallon: the price gap times the gallons, minus the fuel "
+                                   "the detour burns and the cost of your time. $0.00 means "
+                                   "no detour pays off.")
                     st.metric("Trip distance",
                               f"about {trip_miles:.0f} mi" if SYNTHETIC else f"{trip_miles:.0f} mi",
                               border=True,
@@ -764,7 +768,7 @@ if _selected == ":material/local_gas_station: Where to stop":
                                    + (" Approximate: the synthetic route is straight lines "
                                       "between cities." if SYNTHETIC else ""))
                     st.metric("Fuel needed", f"{trip_gallons:.1f} gal", border=True,
-                              help=f"{trip_miles:.0f} mi ÷ {mpg:.0f} mpg")
+                              help=f"{trip_miles:.0f} mi ÷ {mpg:.1f} mpg")
                     if fplan is not None and not fplan["stop_needed"]:
                         st.metric("Fuel on arrival", f"{fplan['arrive_gal']:.1f} gal",
                                   border=True,
@@ -823,7 +827,8 @@ if _selected == ":material/local_gas_station: Where to stop":
                     st.metric("Versus Florida average", f"{'+' if diff > 0 else ''}{diff}¢")
                     week = florida.index[-1]
                     week = week.strftime("%Y-%m-%d") if hasattr(week, "strftime") else str(week)
-                    st.caption(f"Prices on your route: ${versus['route_median']:.2f}/gal; "
+                    st.caption(f"Median of all priced stations in the corridor: "
+                               f"${versus['route_median']:.2f}/gal; "
                                f"Florida average ({week}, {series_label}): "
                                f"${versus['state_latest']:.2f}/gal")
             lost = insight.regret(ranked)

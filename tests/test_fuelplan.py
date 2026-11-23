@@ -1,3 +1,4 @@
+import math
 import pytest
 import fuelplan as fp
 
@@ -64,3 +65,14 @@ def test_no_stop_needed_gallons_is_room():
 def test_rounding_ignores_float_noise():
     assert fp._floor_tenth(2.5000000001) == 2.5 and fp._floor_tenth(2.4999999999) == 2.5
     assert fp._ceil_half(2.5000000001) == 2.5 and fp._ceil_half(2.6) == 3.0
+
+
+def test_minimum_includes_the_drive_back_to_the_route():
+    """Off-route stations: after filling, the car still drives back to the route (5 mi here)."""
+    s = {"id": "far", "name": "Far", "lat": 27.5, "lng": -82.0, "price": 3.9,
+         "off_route_m": 5 * 1609.344}
+    r = fp.plan([s], PATH, fuel_gal=4.5, tank_gal=16, mpg=25, reserve_gal=2.4, p_ref=3.5)
+    ps = r["per_station"]["far"]
+    along_mi = fp.trip_miles(PATH) / 2
+    needed = (fp.trip_miles(PATH) - along_mi) / 25 + 5 / 25 + 2.4 - ps["fuel_at_station"]
+    assert ps["gallons"] == math.ceil(needed * 2) / 2 == 1.5

@@ -327,7 +327,7 @@ def test_the_regret_line_says_what_choosing_on_price_costs(monkeypatch):
 
 
 def versus_lines(app):
-    return [c.value for c in app.caption if "Prices on your route:" in c.value]
+    return [c.value for c in app.caption if "all priced stations in the corridor" in c.value]
 
 
 def test_the_corridor_is_compared_with_the_florida_average_when_both_are_synthetic(monkeypatch):

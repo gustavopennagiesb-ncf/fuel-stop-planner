@@ -92,7 +92,9 @@ def plan(stations: list, path: list, fuel_gal: float, tank_gal: float, mpg: floa
         fuel_at = fuel_gal - reach_mi / mpg
         reachable = fuel_at >= reserve_gal
         room = max(0.0, _floor_tenth(effective_tank - fuel_at))
-        minimum = _ceil_half(max(0.0, (miles - along / METERS_PER_MILE) / mpg + reserve_gal - fuel_at))
+        # After filling, the car drives back to the route (off) and then to the destination.
+        rest_mi = (miles - along / METERS_PER_MILE) + off / METERS_PER_MILE
+        minimum = _ceil_half(max(0.0, rest_mi / mpg + reserve_gal - fuel_at))
         if not reachable:
             gallons = 0.0
         elif stop_needed and s["price"] >= p_ref:
