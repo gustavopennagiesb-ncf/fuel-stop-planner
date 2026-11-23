@@ -165,16 +165,20 @@ def address_input(name, label, default_text):
 
 
 origin = destination = None
-# Trip and car fit on one line of "chips"; editing them opens a popover, so the answer starts
-# near the top of the page instead of below two tall cards.
+# The choices (popovers) sit on the left and a summary of them on the right, so the answer
+# starts near the top of the page instead of below two tall cards.
 trip_strip = st.container(border=True, key="trip_strip")
 trip_strip.html('<p class="fs-step"><b>Start here</b> · Tell the app where you are going and pick '
                 'your car. ' + ("Press Find stations to search." if provider == "google"
                                 and config.GOOGLE_API_KEY else
                                 "The recommendation below updates on its own.") + '</p>')
-strip_row = trip_strip.container(horizontal=True, vertical_alignment="center", gap="small")
-trip_chips = strip_row.empty()  # filled once the trip and the car are known
-with strip_row.popover("Where are you going?", icon=":material/edit_location_alt:"):
+strip_left, strip_right = trip_strip.columns([2, 3], gap="large")
+strip_left.html('<p class="fs-panel-label">Your choices</p>')
+choices = strip_left.container(key="trip_choices", gap="small")
+strip_right.html('<p class="fs-panel-label">Summary</p>')
+trip_chips = strip_right.empty()  # filled once the trip and the car are known
+with choices.popover("Where are you going?", icon=":material/edit_location_alt:",
+                     width="stretch"):
     corridor_help = ("How far from your route a station can be and still be listed. For example, "
                      "3 km each side searches a 6 km wide strip along the route.")
     if provider == "google" and config.GOOGLE_API_KEY:
@@ -229,7 +233,7 @@ with strip_row.popover("Where are you going?", icon=":material/edit_location_alt
             buffer_km = st.number_input(
                 "Search corridor width (km each side)", 1.0, 10.0, 3.0, 0.5,
                 key="buffer_km", help=corridor_help)
-with strip_row.popover("Pick your car", icon=":material/directions_car:"):
+with choices.popover("Pick your car", icon=":material/directions_car:", width="stretch"):
     st.markdown("**Look up my car**")
     car = None
     if time.time() < st.session_state.get("fe_down_until", 0.0):
@@ -275,7 +279,8 @@ with strip_row.popover("Pick your car", icon=":material/directions_car:"):
         "Fuel grade", ["Regular", "Midgrade", "Premium", "Diesel"],
         default="Regular", key="fuel_grade",
         help="Filters station prices to this grade. Regular = 87 octane.")
-with strip_row.popover("How much fuel do you have?", icon=":material/local_gas_station:"):
+with choices.popover("How much fuel do you have?", icon=":material/local_gas_station:",
+                     width="stretch"):
     fuel_input_mode = st.segmented_control(
         "How do you know?", ["Fuel gauge", "Miles left"], key="fuel_input_mode")
     fuel_mode = None
@@ -295,8 +300,8 @@ with strip_row.popover("How much fuel do you have?", icon=":material/local_gas_s
                    "to buy.")
 
 
-def chip(label, value):
-    return (f'<div class="fs-chip"><small>{html.escape(label)}</small>'
+def chip(label, value, kind=""):
+    return (f'<div class="fs-chip {kind}"><small>{html.escape(label)}</small>'
             f'<b>{html.escape(value)}</b></div>')
 
 
@@ -304,12 +309,14 @@ _trip_labels = (st.session_state.get("trip_applied", ti.DEFAULT)
                 if provider == "google" and config.GOOGLE_API_KEY else ti.DEFAULT)
 trip_chips.html('<div class="fs-chips">'
                 + chip("Route", f'{_trip_labels["origin"]["label"]} → '
-                                f'{_trip_labels["destination"]["label"]}')
-                + chip("Car", f"{mpg:.1f} mpg · {tank:.0f} gal tank")
+                                f'{_trip_labels["destination"]["label"]}', "wide")
+                + chip("Car", f"{mpg:.1f} mpg")
+                + chip("Tank", f"{tank:g} gal")
+                + chip("Range", f"about {tank * mpg:.0f} mi")
                 + chip("Fuel now", "Not set" if fuel_mode is None else
                        f"{gauge_label} tank" if fuel_mode == "gauge" else
-                       f"{fuel_value:.0f} mi to reserve")
-                + chip("Fuel", fuel_grade or "Regular")
+                       f"{fuel_value:.0f} mi to reserve", "muted" if fuel_mode is None else "")
+                + chip("Fuel grade", fuel_grade or "Regular")
                 + chip("Corridor", f"{buffer_km:g} km each side") + "</div>")
 
 _NAV = [
@@ -338,11 +345,26 @@ h1, h2, h3 {letter-spacing: -0.012em;}
 .fs-title {font-family: "Space Grotesk", sans-serif; font-size: 2.1rem; font-weight: 700;
     letter-spacing: -0.02em; line-height: 1.1; margin: 0; padding: 0;}
 .fs-sub {margin: 0.35rem 0 0 0; opacity: 0.7; font-size: 0.95rem;}
-.fs-chips {display: flex; flex-wrap: wrap; gap: 0.5rem;}
-.fs-chip {background: #14171C; border: 1px solid #2B3039; border-radius: 0.5rem;
-    padding: 0.4rem 0.75rem;}
-.fs-chip small {display: block; font-size: 0.7rem; opacity: 0.6;}
-.fs-chip b {font-weight: 600; font-size: 0.85rem;}
+.fs-panel-label {font-size: 0.66rem; font-weight: 600; letter-spacing: 0.18em;
+    text-transform: uppercase; opacity: 0.55; margin: 0.35rem 0 -0.35rem 0;}
+.st-key-trip_choices button {min-height: 3.55rem; border-radius: 0.7rem !important;
+    background: linear-gradient(180deg, #1B1F26, #16191F) !important;
+    padding: 0.5rem 1rem !important;}
+.st-key-trip_choices button > div {justify-content: flex-start !important; width: 100%;
+    gap: 0.6rem; font-weight: 500;}
+.st-key-trip_choices button > div > div:first-child {justify-content: flex-start !important;}
+.st-key-trip_choices button:hover {border-color: #6CB4FF !important;}
+.fs-chips {display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.55rem;}
+@media (max-width: 640px) {.fs-chips {grid-template-columns: repeat(2, minmax(0, 1fr));}}
+.fs-chip {background: linear-gradient(180deg, #1B1F26, #16191F); border: 1px solid #2B3039;
+    border-left: 3px solid #6CB4FF; border-radius: 0.7rem; padding: 0.6rem 0.85rem; min-width: 0;}
+.fs-chip.wide {grid-column: 1 / -1;}
+.fs-chip.muted {border-left-color: #3A404B;}
+.fs-chip.muted b {opacity: 0.55; font-weight: 500;}
+.fs-chip small {display: block; font-size: 0.64rem; font-weight: 600; letter-spacing: 0.12em;
+    text-transform: uppercase; opacity: 0.55; margin-bottom: 0.2rem;}
+.fs-chip b {display: block; font-size: 0.98rem; font-weight: 600; white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis;}
 .fs-step {margin: 0 0 0.1rem 0; font-size: 0.9rem; opacity: 0.85;}
 .fs-step b {color: #9CCBFF; font-weight: 600;}
 .fs-kicker {font-size: 0.72rem; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase;
