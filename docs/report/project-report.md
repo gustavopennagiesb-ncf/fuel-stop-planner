@@ -19,8 +19,9 @@ The app answers three questions:
 1. **Where should I stop on this route?** Not "which station is cheapest", but which one is
    cheapest *after* paying for the detour in fuel and time.
 2. **Is this a good week to fill up?** Tested honestly against the naive forecast.
-3. **How far can I drive before I must refuel?** Added for gig delivery drivers, who circle a
-   city instead of travelling to a destination.
+3. **Do I need to stop at all, and how much should I buy?** The driver says how much fuel is in
+   the tank; the app works out whether the trip fits, which stations are still reachable, and
+   how many gallons are worth buying at each.
 
 A deliberate constraint shaped the whole design: **the language model never produces a number.**
 Every figure on screen is computed in Python; the model only phrases what the code already
@@ -37,7 +38,8 @@ one module per API, with no UI code.
 | Google Places API (New) | `POST /v1/places:searchNearby` | station `id`, name, coordinates, `fuelOptions.fuelPrices[]` |
 | Google Routes API v2 | `POST /directions/v2:computeRoutes` | `distanceMeters`, `duration`, `polyline.encodedPolyline` |
 | fueleconomy.gov (EPA/DOE) | `GET /ws/rest/vehicle/...` | EPA label mpg: `city08`, `comb08`, `highway08`, `fuelType` |
-| Anthropic Messages API | `POST /v1/messages` | the explanatory text (no numbers trusted) |
+| Groq (OpenAI-compatible) | `POST /openai/v1/chat/completions` | the explanatory text (no numbers trusted); free tier, used first |
+| Anthropic Messages API | `POST /v1/messages` | the same, used when no Groq key is set |
 
 The weekly EIA series is cached to `data/eia_weekly.csv` and reused when the API is unreachable.
 Google responses are **never** written to disk: their terms allow storing only place IDs, which
@@ -51,13 +53,13 @@ the fields above are requested and billed.
 
 ![EDA tab](../screenshots/04-eda.jpg)
 
-The Florida and U.S. weekly series cover **1,245 weeks** (2003 to 2026). The EDA tab reports the
+The Florida and U.S. weekly series cover **1,246 weeks** (2003 to 2026). The EDA tab reports the
 cleaning rather than hiding it: **20 missing weeks** were filled by linear interpolation and
 **19 price shocks** were flagged at a threshold the user can move (default: 3 standard
 deviations of the weekly change). Outlier treatment is a choice offered to the user, "keep" or
 "interpolate", because a price shock in gasoline is often a real event rather than an error.
 The before/after means and standard deviations are printed so the effect of the treatment is
-visible (mean 2.800 → 2.779, SD 0.651 → 0.668).
+visible (mean 2.801 → 2.779, SD 0.651 → 0.668).
 
 Weekly *changes* in Florida and U.S. prices correlate at **r = 0.799**, and the lead-lag analysis
 puts the strongest link at **lag 0**: Florida moves with the national market in the same week,
@@ -90,7 +92,11 @@ finding, and it is what justifies putting the effort into the "where" half inste
 
 ![Where to stop](../screenshots/01-where-to-stop.jpg)
 
-*The screenshot shows the same tab from an earlier fetch. Its station prices match the measured run below, but the detour and the reference price had moved, so its savings are quite different. Repeated runs give different figures because live prices and Routes detours move between fetches; that variability is a real property of the data.*
+*The screenshot is a later fetch of the same route (2026-11-22): 85 stations, 57 with a price; the
+recommended stop is a Mobil at $3.30/gal, 0.4 miles and under a minute off the route, saving
+$1.05; the cheapest gas was a Thorntons at $3.09/gal whose 10-minute detour leaves only $0.18.
+Its figures differ from the measured run below because live prices and Routes detours move
+between fetches; that variability is a real property of the data.*
 
 For each station found along the route corridor, the app computes the **net benefit**:
 
@@ -136,20 +142,41 @@ decision-quality tool, not a money-making one.
 
 ![Map](../screenshots/02-map.jpg)
 
-### 4.3 Driver mode: range before the reserve
+### 4.3 Do I need to stop, and how much should I buy?
 
-![Driver mode](../screenshots/05-driver-mode.jpg)
+![Fuel plan](../screenshots/05-fuel-plan.jpg)
 
-For delivery drivers there is no destination, so the question changes to range. From the tank
-level read off the gauge in eighths, the app computes `(gallons now − reserve) × mpg` and
-reports it as a **low / base / high band** (65 / 120 / 160 miles in the screenshot), converted
-into hours of work and approximate orders.
+The recommendation above assumes the driver will stop. Often they do not need to, and when they
+do, the right amount to buy depends on how much is already in the tank. The driver can say how
+much fuel they have in either of the two ways a car shows it: the **gauge** (E, 1/8 … F) or the
+**miles left until the reserve light**. From that, `fuelplan.py` (pure Python, no interface code)
+computes:
 
-The band is deliberate. A gauge read by eye is a range, not a point, and stop-and-go driving
-burns more than the EPA label. Every default here is an **assumption, labelled as one in the
-interface**: 15 miles per hour of work, 8 miles per order, a reserve of 15% of the tank, and mpg
-factors of 0.85 and 1.10. Research into driver habits found no measured public figures for these,
-so presenting a single confident number would have been dishonest.
+- **the trip's fuel**: route length from the decoded route polyline, divided by mpg (no extra
+  API call);
+- **whether a stop is needed**: only if the fuel on board is less than the trip's fuel plus a
+  **reserve** (15% of the tank, at least 2 gallons: an assumption, stated as one). Otherwise the
+  card says *"No stop needed"* and how much fuel the driver arrives with;
+- **which stations are reachable**: each station is projected onto the route, and a station is
+  dropped if the driver would reach it below the reserve, so the app never recommends a station
+  the car cannot get to;
+- **how many gallons to buy at each station**: the saving grows with every gallon bought at a
+  station cheaper than the route, so there the answer is to **fill the tank**; at a station that
+  is not cheaper, only the **minimum** that reaches the destination with the reserve intact.
+
+These per-station gallons feed the same net-benefit ranking as section 4.2, so the "price is a
+bad proxy" panel, the sensitivity table and the language model all use the same figures as the
+headline. The tank size is pre-filled from the EPA size class of the looked-up car (compact,
+midsize, pickup …), labelled as an estimate and editable, because no free source publishes tank
+capacity.
+
+The screenshot shows why this matters, on the same Sarasota to Orlando run (131 miles, 27.2 mpg,
+13-gallon tank, so 4.8 gallons for the trip). With a **full** tank the answer is "No stop
+needed". At **half** a tank (6.5 gallons, short of 4.8 plus the 2-gallon reserve) the best stop
+is the Mobil from the screenshot in section 4.2, buying 9.4 gallons. At a **quarter** tank the Mobil is out of reach
+before the reserve, so the recommendation moves to a Chevron near the start of the route at
+$3.10/gal: **buy 10.3 gallons**, 1.9 miles and 7 minutes off the route, saving **$1.02**. The
+station that was best for a driver with fuel to spare is not even an option for one without.
 
 ### 4.4 LLM integration: the model may phrase, never calculate
 
@@ -158,10 +185,17 @@ numbers. Its output then passes through `validate()`, which extracts every numbe
 and checks each against the facts within a rounding tolerance. If any number cannot be traced,
 the app retries once and then falls back to a deterministic template.
 
-This makes hallucination **measurable, not hypothetical**: the interface reports the share of
-numbers that were traceable on the first attempt, the number of attempts, and whether the
-fallback was used. A failed API call (wrong key, no credit, network) is reported on screen, so a
-broken integration can never be mistaken for a working one.
+This makes hallucination **measurable, not hypothetical**: every answer from the assistant
+(a chat panel available on every page) carries a badge with the share of numbers that were
+traceable on the first attempt, the number of attempts, and whether the fallback was used. A
+failed API call (wrong key, no credit, network) is reported on screen, so a broken integration
+can never be mistaken for a working one.
+
+Checking numbers is not the same as checking conclusions. In testing, the model was asked "Is the
+detour worth my time?" and answered that it was *not*, citing a net benefit of "-1.9", while the
+app recommended that very stop with a saving of $1.90. Every number in the answer was in the
+facts, so the validator passed it: by design it matches numbers and ignores their sign. The fix was to give the model the app's own decision as a fact (`verdict`) and
+instruct it never to contradict it; the deterministic template follows the same verdict.
 
 Measured on 2026-11-17 using Groq's free-tier API (model: `qwen/qwen3.8-27b`), no fallback triggered
 on any call:
@@ -181,12 +215,12 @@ any of these runs.
 
 | | |
 |---|---|
-| Commits | 52 (2026-11-09 to 2026-11-17) |
-| Application code | ~9,500 lines across 44 modules |
-| Test code | ~2,360 lines across 21 files, **306 tests** |
+| Commits | 88 (2026-11-09 to 2026-11-22) |
+| Application code | ~3,150 lines across 25 Python modules |
+| Test code | ~2,900 lines across 22 files, **349 tests** |
 | Dependencies | pinned exactly; Python 3.11+ |
 
-The architecture keeps the arithmetic away from the interface: **41 of the 44 modules contain no
+The architecture keeps the arithmetic away from the interface: **21 of the 25 modules contain no
 Streamlit code at all**, which is why the test suite runs in about a minute without a browser,
 a network connection, or a single API key. UI behaviour is covered with Streamlit's `AppTest`.
 
@@ -197,7 +231,9 @@ minutes; and the address autocomplete manages its own billing session.
 ## 6. Limitations
 
 - The forecasting result is negative: no method tested beats the naive forecast at one week.
-- Driver mode's defaults are assumptions, not measurements. They are labelled as such throughout.
+- The fuel plan rests on assumptions, labelled as such: a reserve of 15% of the tank (at least
+  2 gallons), tank sizes estimated from the EPA size class, and one stop per trip (a trip longer
+  than a full tank gets a warning, not a multi-stop plan).
 - The detour for most stations is an out-and-back approximation; only the cheapest candidates get
   an exact route, to cap API cost. As a result the measured share of wrong picks mixes two detour
   methods: exact Routes detours for the cheapest handful of priced stations, an out-and-back

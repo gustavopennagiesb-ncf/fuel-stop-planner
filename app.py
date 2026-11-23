@@ -1069,7 +1069,7 @@ elif _selected == ":material/analytics: EDA":
             + f"\n- **{rep['n_outliers_flagged']} price shock(s)** were flagged at the "
               f"current threshold (Z > {z_thr})"
             + ("; they were replaced." if treat == "interpolate" else "; they were kept.")
-            + f"\n- Florida and U.S. weekly price changes are **{corr_str}ly correlated** "
+            + f"\n- Florida and U.S. weekly price changes are **{corr_str} correlated** "
               f"(r = {corr_d:.2f})."
             + f"\n- U.S. prices lead Florida by **{best_lag} week(s)** at the strongest lag "
               f"(r = {lags[best_lag]:.2f})."

@@ -195,3 +195,11 @@ def test_non_fuel_aware_skip_copy_is_unchanged():
     title, body = rc.summary(rc.recommend([st("A", 0.3)], min_saving=0.5))
     assert title == "No detour pays off enough"
     assert body.endswith("Fill up at the first station on your route.")
+
+
+def test_a_half_minute_detour_never_reads_zero_minutes():
+    """Python rounds 0.5 to 0, so anything under a minute must say so in words."""
+    for m in (0.0, 0.4, 0.5, 0.9):
+        assert rc.minutes_label(m) == "under 1 min"
+    assert rc.minutes_label(1.0) == "1 min"
+    assert rc.minutes_label(2.6) == "3 min"

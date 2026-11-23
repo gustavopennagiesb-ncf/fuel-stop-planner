@@ -3,7 +3,8 @@
 Streamlit app that helps a driver decide **when** to fill up (EIA weekly gasoline prices,
 rolling-origin forecast evaluation against a naive baseline) and **where** to stop on a route
 (stations along the corridor, detour break-even using fuel economy and the value of time),
-with an **LLM explanation whose numbers are checked against the calculation**.
+whether a stop is **needed at all** and how many gallons to buy given the fuel already in the
+tank, with an **LLM assistant whose numbers are checked against the calculation**.
 
 Not financial advice: historical data and arithmetic only.
 
@@ -18,7 +19,7 @@ Every API below returns **JSON** over HTTPS. The retrieval and parsing live in `
 | Station prices | Google Places API (New) | `POST /v1/places:searchNearby` | server key | `places[]` with `id`, `displayName.text`, `location.latitude/longitude`, `fuelOptions.fuelPrices[]` |
 | Route and detour | Google Routes API v2 | `POST /directions/v2:computeRoutes` | server key | `routes[0]` with `distanceMeters`, `duration`, `polyline.encodedPolyline` |
 | Car mpg | fueleconomy.gov web services (EPA/DOE) | `GET /ws/rest/vehicle/...` | none | `menuItem[]` cascade, then `city08`, `comb08`, `highway08`, `fuelType` |
-| Plain-language text | Anthropic Messages API | `POST /v1/messages` | optional key | the model's text, with every number checked against the computed facts |
+| Plain-language text | Groq (OpenAI-compatible), else Anthropic Messages API | `POST /openai/v1/chat/completions`, `POST /v1/messages` | optional key (Groq has a free tier) | the model's text, with every number checked against the computed facts |
 
 Both Google calls send a **field mask**, so only the fields above are requested and billed
 (`providers/places.py` and `providers/routes.py`).
@@ -48,7 +49,7 @@ Needs **Python 3.11 or newer** (built and tested on 3.12; the tests read the the
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 .venv/bin/streamlit run app.py        # PROVIDER=fixture by default
-.venv/bin/python -m pytest -q         # 269 tests, no network and no keys
+.venv/bin/python -m pytest -q         # 349 tests, no network and no keys
 ```
 
 ## Run with real data
@@ -68,22 +69,27 @@ In `google` mode (day-1 check passed: Places returns U.S. fuel prices):
   warning, and any load error falls back to fixtures instead of crashing.
 - Where to stop answers first ("Fill up at ...", or "No detour pays off enough"), the cheapest price on the route (with what its detour does to the saving), with buttons that
   open the station and a "navigate via this station" route in Google Maps (free links, no key).
-  Origin and destination are under "Your trip" with Google's address suggestions (type, then pick
+  Origin and destination are under "Where are you going?" with Google's address suggestions (type, then pick
   an option, like Google Maps; plain text boxes if the browser key cannot use the Places API); a paid
   search starts only when you press "Find stations".
 - Under the recommendation, "Is the cheapest station the best one?" shows what choosing on price
   alone costs (regret), how that changes across fill sizes and values of time, and how the
   route's prices compare with the latest weekly state average. It re-ranks the same stations, so it
   makes no extra API calls.
+- "How much fuel do you have?" (fuel gauge or miles to the reserve light) turns the answer into
+  "No stop needed" or a stop with "buy N gal": only stations reachable before the reserve are
+  ranked, a station cheaper than the route is a fill-up and any other the minimum to arrive with
+  the reserve (`fuelplan.py`, pure math; no extra API call). "Set gallons by hand" in the sidebar
+  overrides the gallons but keeps the reachability check.
 - "Use my current location" (under Origin, google mode only) asks the browser for your position
   and uses it as the route origin. The position stays in the session, is rounded to about 10 m,
   is never written to a file or a log, and only reaches Google in the Routes request made with
   your own key. If permission is denied, the typed address keeps working.
 
 ## Structure
-- `app.py` UI (7 tabs, answer first: Where to stop · Driver mode · When to fill up · Sensitivity · EDA · AI · How to use; "Your car" and "Your trip" side by side above the tabs, fill-up and time settings in the sidebar) · `.streamlit/config.toml` light theme · `services.py` provider switch · `config.py` env flags
+- `app.py` UI (sidebar navigation, answer first: Where to stop · When to fill up · Sensitivity · EDA · How to use; a "Start here" strip of trip, car and fuel chips edited in popovers; an AI assistant button on every page; fill-up and time settings in the sidebar) · `.streamlit/config.toml` dark theme · `services.py` provider switch · `config.py` env flags
 - `providers/` `eia.py`, `places.py`, `routes.py`, `fixtures.py` (synthetic)
-- `gmap.py` Google Maps JS embed · `geo.py` polyline + corridor filter · `detour.py` break-even math · `forecast.py` baselines · `driver.py` driver-mode math
+- `gmap.py` Google Maps JS embed · `geo.py` polyline + corridor filter · `detour.py` break-even math · `forecast.py` baselines · `fuelplan.py` trip fuel, reachability and gallons per station · `driver.py` fuel reserve
 - `llm.py` provider interface, number validator, template fallback
 - `tests/` unit tests
 

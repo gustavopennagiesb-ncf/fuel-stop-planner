@@ -18,7 +18,7 @@ def md_escape(text):
 
 def minutes_label(m):
     """'under 1 min' instead of a confusing '0 min' for a very short detour."""
-    return "under 1 min" if m < 0.5 else f"{m:.0f} min"
+    return "under 1 min" if m < 1 else f"{m:.0f} min"
 
 
 def recommend(ranked, min_saving=MIN_SAVING_DEFAULT, n_alternatives=3, stop_needed=None):
