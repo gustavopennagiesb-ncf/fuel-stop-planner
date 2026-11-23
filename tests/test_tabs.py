@@ -60,3 +60,12 @@ def test_the_sensitivity_tab_shows_the_break_even_table(monkeypatch):
               if getattr(d.value, "index", None) is not None
               and d.value.index.name == "value of time $/h"]
     assert frames, "the break-even table is missing"
+
+
+def test_the_sensitivity_table_labels_money_and_time(monkeypatch):
+    app = open_tab(monkeypatch, TABS["sensitivity"])
+    frame = next(d.value for d in app.dataframe
+                 if getattr(d.value, "index", None) is not None
+                 and d.value.index.name == "value of time $/h")
+    assert list(frame.columns)[0] == "$0.10"
+    assert str(frame.index[0]).endswith("/h")

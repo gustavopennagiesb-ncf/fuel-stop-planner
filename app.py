@@ -351,12 +351,12 @@ h1, h2, h3 {letter-spacing: -0.012em;}
     rgba(30, 34, 41, 0) 55%); border-color: rgba(91, 212, 138, 0.35) !important;}
 .fs-status {font-size: 0.68rem; font-weight: 600; letter-spacing: 0.16em;
     text-transform: uppercase; opacity: 0.6; margin: 0 0 0.45rem 0; text-align: right;}
-/* bottom clears the avatar and badge Streamlit Cloud puts in the bottom-right corner */
-.st-key-assistant_fab {position: fixed; right: 1.75rem; bottom: 4.5rem; z-index: 1000;
+/* In the header strip, left of Streamlit's own buttons: it never covers the page content. */
+.st-key-assistant_fab {position: fixed; top: 0.55rem; right: 9rem; z-index: 1000000;
     width: auto !important;}
 .st-key-assistant_fab button {border-radius: 999px !important; background: #6CB4FF !important;
     color: #0F1115 !important; border: none !important; font-weight: 600;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45); padding: 0.5rem 1.1rem !important;}
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35); padding: 0.35rem 1rem !important;}
 .fs-label {font-size: 0.66rem; font-weight: 600; letter-spacing: 0.18em; text-transform: uppercase;
     opacity: 0.55; margin: 0.9rem 0 -0.4rem 0;}
 .st-key-nav_container button {border: 1px solid transparent !important;
@@ -558,21 +558,24 @@ _selected = st.session_state.get("main_tabs", _NAV[0])
 if _selected == ":material/help: How to use":
     st.subheader("How to use this app")
     st.markdown(
-        "**Start with \"Your trip\":** enter where you are going. Open \"Your car\" to pick your car or set your mpg and tank "
-        "size. The sidebar holds the fill-up and "
-        "time settings (gallons, value of your time, speed). Hover the small (?) next to a "
-        "control for a tip. Every tab reads those values.\n\n"
+        "**Start here:** the strip at the top of the page has three buttons. *Where are you "
+        "going?* sets the route, *Pick your car* sets your mpg, tank and fuel grade, and *How "
+        "much fuel do you have?* (fuel gauge or miles to the reserve light) lets the app tell "
+        "you whether you need to stop at all and how many gallons to buy. The sidebar holds the "
+        "fill-up and time settings (gallons, value of your time, speed). Hover the small (?) "
+        "next to a control for a tip. Every page reads those values.\n\n"
         "**Which tab should I open?**\n"
         "- *I am on a trip and want the best station on the way* → **Where to stop**. Edit any "
         "price in the table (typed prices always work). The app ranks stations by net benefit: "
-        "fuel saved minus the extra fuel and time of the detour.\n"
+        "fuel saved minus the extra fuel and time of the detour. With your fuel level set, it "
+        "says *No stop needed* or which reachable station to use and how many gallons to buy.\n"
         "- *Is this a good week to fill up?* → **When to fill up**: weekly Florida/U.S. prices "
         "and a check of whether any simple forecast beats 'next week = this week'.\n"
         "- *How much is a detour worth?* → **Sensitivity**: extra miles a detour is worth for "
         "each price gap.\n"
         "- *Where does the price data come from and is it clean?* → **EDA**: missing-data and "
         "outlier treatment (before/after), distributions and correlations of the EIA series.\n"
-        "- *Explain it in plain words* → the **AI assistant** button in the bottom-right corner, "
+        "- *Explain it in plain words* → the **AI assistant** button at the top right, "
         "on every page: a plain-language explanation and a question box. Every number the model writes is checked against the calculation; if it cannot "
         "be traced, a template is used.\n\n"
         "Data: EIA Open Data API v2 (weekly retail gasoline, JSON) and Google Places/Routes "
@@ -663,18 +666,20 @@ if _selected == ":material/local_gas_station: Where to stop":
                     st.markdown("Saves you the most after the detour's extra fuel and time."
                                 + (" It is also the cheapest gas on this route."
                                    if cheap_is_best else ""))
-                    with st.container(horizontal=True, gap="small"):
-                        if fplan is not None:
-                            st.metric("Buy", f"{b['gallons']:.1f} gal", border=True,
-                                      help="Worked out from your fuel level: fill up when this "
-                                           "station is cheaper than the route, else just enough "
-                                           "to finish the trip with your reserve.")
-                        st.metric("Price", f"${b['price']:.2f}/gal", border=True)
-                        st.metric("You save", f"${b['net_benefit']:.2f}", border=True,
-                                  help="After the extra fuel and your time on the detour.")
-                        st.metric("Detour", f"{b['extra_miles']:.1f} mi", border=True)
-                        st.metric("Extra time", recommend.minutes_label(b["extra_minutes"]),
-                                  border=True)
+                    tiles = ([("Buy", f"{b['gallons']:.1f} gal",
+                               "Worked out from your fuel level: fill up when this station is "
+                               "cheaper than the route, else just enough to finish the trip "
+                               "with your reserve.")] if fplan is not None else [])
+                    tiles += [("Price", f"${b['price']:.2f}/gal", None),
+                              ("You save", f"${b['net_benefit']:.2f}",
+                               "After the extra fuel and your time on the detour."),
+                              ("Detour", f"{b['extra_miles']:.1f} mi", None),
+                              ("Extra time", recommend.minutes_label(b["extra_minutes"]), None)]
+                    # Even rows (2 + 2, or 3 + 2) instead of a row that wraps to 3 + 1.
+                    split = 2 if len(tiles) == 4 else 3
+                    for row in (tiles[:split], tiles[split:]):
+                        for col, (label, value, hint) in zip(st.columns(len(row)), row):
+                            col.metric(label, value, border=True, help=hint)
                     if fplan is not None and fplan["per_station"][b["id"]]["short"]:
                         st.warning("This trip needs more than one tank: plan another stop "
                                    f"before {recommend.md_escape(_dest)}.")
@@ -749,7 +754,7 @@ if _selected == ":material/local_gas_station: Where to stop":
                                    f"(route median price)")
                     st.metric("Potential savings", f"${max(nb, 0):.2f}",
                               delta=f"-${max(nb, 0):.2f} off your trip" if nb > 0 else None,
-                              border=True,
+                              delta_color="inverse", border=True,
                               help="Net benefit of the recommended stop after detouring cost and "
                                    "your value of time. $0.00 means no detour pays off.")
                     st.metric("Trip distance",
@@ -816,8 +821,11 @@ if _selected == ":material/local_gas_station: Where to stop":
                 with cols[2].container(border=True, height="stretch"):
                     diff = versus["diff_cents"]
                     st.metric("Versus Florida average", f"{'+' if diff > 0 else ''}{diff}¢")
-                    st.caption("Your route is " + versus["verdict"].replace(
-                        "state average", "Florida average"))
+                    week = florida.index[-1]
+                    week = week.strftime("%Y-%m-%d") if hasattr(week, "strftime") else str(week)
+                    st.caption(f"Prices on your route: ${versus['route_median']:.2f}/gal; "
+                               f"Florida average ({week}, {series_label}): "
+                               f"${versus['state_latest']:.2f}/gal")
             lost = insight.regret(ranked)
             if lost > 0 and rec["verdict"] == "go":
                 st.caption(f"If you stopped at the cheapest station instead, you'd save "
@@ -830,16 +838,6 @@ if _selected == ":material/local_gas_station: Where to stop":
                            f"pays off enough, so fill up at the first station on your route.")
             else:
                 st.caption("The cheapest station is also the best choice here.")
-            if versus:
-                cents = abs(versus["diff_cents"])
-                gap = "" if cents == 0 or versus["verdict"].startswith("about") else f"{cents} cents "
-                week = florida.index[-1]
-                week = week.strftime("%Y-%m-%d") if hasattr(week, "strftime") else str(week)
-                verdict = versus["verdict"].replace("state average", "Florida average")
-                st.caption(f"Prices on your route: ${versus['route_median']:.2f}/gal. "
-                           f"Florida average ({week}, {series_label}): "
-                           f"${versus['state_latest']:.2f}/gal. "
-                           f"Your route is {gap}{verdict}.")
             grid = insight.decision_grid(detoured, p_ref, mpg, speed)
             rank_gap = insight.price_rank_gap(ranked)
             flip = insight.flip_point(detoured, p_ref, gallons_arg, mpg, speed)
@@ -1105,7 +1103,7 @@ elif _selected == ":material/analytics: EDA":
 # ---------------------------------------------------------------- sensitivity
 elif _selected == ":material/calculate: Sensitivity":
     st.caption("What this tab answers: how many extra miles of detour a given price gap is "
-               "worth, at your mpg (Your car) and value of time (sidebar).")
+               "worth, at your mpg (Pick your car) and value of time (sidebar).")
     st.subheader("How far is a detour worth it?")
     st.write("Break-even extra miles for a price gap (columns, $/gal) and value of time "
              "(rows, $/h), using your gallons, mpg and speed.")
@@ -1113,17 +1111,24 @@ elif _selected == ":material/calculate: Sensitivity":
         ref = p_ref if p_ref else 3.6
         sens = sensitivity_table(gallons_used, ref, mpg, speed)
         df_s = pd.DataFrame(sens).T
+        # Text labels make the axes categorical, so every cell is the same size.
+        df_s.columns = [f"${g:.2f}" for g in df_s.columns]
+        df_s.index = [f"${v:g}/h" for v in df_s.index]
         df_s.index.name = "value of time $/h"
-        st.dataframe(df_s, alt="Break-even extra miles by price gap and value of time")
-        st.plotly_chart(px.imshow(df_s, text_auto=True, aspect="auto",
-                                  labels=dict(x="price gap $/gal", y="value of time $/h",
-                                              color="miles")), width="stretch",
+        heat = px.imshow(df_s, text_auto=True, aspect="auto", color_continuous_scale="Blues",
+                         labels=dict(x="price gap ($/gal)", y="value of time", color="miles"))
+        # Plotly reads "$0.10" as a number; categorical axes keep the cells even.
+        heat.update_xaxes(type="category")
+        heat.update_yaxes(type="category")
+        st.plotly_chart(heat, width="stretch",
                         alt="Heat map of break-even extra miles by price gap and value of time")
+        with st.expander("See the numbers as a table", icon=":material/table:"):
+            st.dataframe(df_s, alt="Break-even extra miles by price gap and value of time")
 
 # ---------------------------------------------------------------- AI explanation
 
 
-# The assistant sits in the bottom-right corner of every page. The model only phrases numbers the
+# The assistant sits in the top bar of every page. The model only phrases numbers the
 # code computed: every answer is validated against `facts`, else a template is used (llm.py).
 def assistant_facts():
     best = ranked[0]

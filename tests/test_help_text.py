@@ -86,7 +86,7 @@ def test_no_tab_sends_the_user_to_the_sidebar_for_the_mpg(monkeypatch):
     app.run()
     intros = [c.value for c in app.caption if c.value.startswith(INTRO)]
     mpg_intro = next(c for c in intros if "detour a given price gap" in c)
-    assert "mpg (Your car)" in mpg_intro
+    assert "mpg (Pick your car)" in mpg_intro
 
 
 def test_the_sidebar_is_divided_into_labeled_sections(at):
@@ -109,3 +109,16 @@ def test_every_tab_label_carries_an_icon_so_tabs_stay_scannable(at):
     buttons = at.sidebar.button
     for b in buttons:
         assert b.icon and b.icon.startswith(":material/")
+
+
+def test_how_to_use_names_the_current_controls(monkeypatch):
+    def offline(*args, **kwargs):
+        raise requests.ConnectionError("offline")
+    monkeypatch.setattr(fueleconomy, "_get", offline)
+    app = AppTest.from_file(str(APP), default_timeout=30)
+    app.session_state["main_tabs"] = ":material/help: How to use"
+    app.run()
+    text = " ".join(m.value for m in app.markdown)
+    for control in ("Where are you going?", "Pick your car", "How much fuel do you have?"):
+        assert control in text
+    assert '"Your trip"' not in text and '"Your car"' not in text

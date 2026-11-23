@@ -454,3 +454,9 @@ def test_skip_under_a_plan_uses_the_best_ranked_stations_gallons(monkeypatch):
     assert best["gallons"] != DEFAULTS["gallons"]
     assert app.slider(key="gallons").value == min(25.0, max(3.0, best["gallons"]))
     assert any(f"At {best['gallons']:g} gallons" in m.value for m in app.markdown)
+
+
+def test_the_florida_comparison_is_said_once(monkeypatch):
+    app, _ = make_app(monkeypatch, stations=crafted())
+    mentions = [c.value for c in app.caption if "Florida average" in c.value]
+    assert len(mentions) == 1
