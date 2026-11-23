@@ -35,6 +35,10 @@ from llm import AnthropicProvider, GroqProvider, ask, explain
 from providers import fueleconomy
 from services import compute_detours, load_series, load_trip
 
+FORECAST_TIE = 0.02  # assumption: a ratio within 2% of naive is noise, not a win
+FORECAST_NAMES = {"naive": "Naive: next week = this week", "drift": "Drift (recent trend)",
+                  "moving_avg_4": "4-week moving average",
+                  "seasonal_naive_52": "Same week last year"}
 FE_RETRY_S = 60  # seconds before the car lookup is tried again after fueleconomy.gov failed
 
 st.set_page_config(page_title="Fuel Stop Planner", page_icon=":material/local_gas_station:", layout="wide")
@@ -134,6 +138,12 @@ def slider_with_number(label, lo, hi, default, step, key, help=None, disabled: b
 
 st.session_state.setdefault("mpg", DEFAULTS["mpg"])
 GAUGE_LEVELS = ["E", "1/8", "1/4", "3/8", "1/2", "5/8", "3/4", "7/8", "F"]
+
+
+def page_question(question, detail):
+    """The question a page answers, shown first and in full, not as a small caption."""
+    st.html(f'<div class="fs-question"><small>The question</small><b>{html.escape(question)}</b>'
+            f'<span>{html.escape(detail)}</span></div>')
 
 
 def card_header(title, description, icon=None):
@@ -367,6 +377,16 @@ h1, h2, h3 {letter-spacing: -0.012em;}
     overflow: hidden; text-overflow: ellipsis;}
 .fs-step {margin: 0 0 0.1rem 0; font-size: 0.9rem; opacity: 0.85;}
 .fs-step b {color: #9CCBFF; font-weight: 600;}
+.fs-question {border-left: 3px solid #6CB4FF; background: rgba(108, 180, 255, 0.06);
+    border-radius: 0 0.6rem 0.6rem 0; padding: 0.6rem 1rem; margin: 0.1rem 0 0.4rem 0;}
+.fs-question small {display: block; font-size: 0.64rem; font-weight: 600; letter-spacing: 0.16em;
+    text-transform: uppercase; color: #9CCBFF;}
+.fs-question b {display: block; font-family: "Space Grotesk", sans-serif; font-size: 1.2rem;
+    font-weight: 600; margin: 0.15rem 0 0.2rem 0;}
+.fs-question span {opacity: 0.75; font-size: 0.92rem;}
+.fs-kicker-blue {color: #9CCBFF !important;}
+.st-key-answer_when {background: linear-gradient(160deg, rgba(108, 180, 255, 0.12),
+    rgba(30, 34, 41, 0) 55%); border-color: rgba(108, 180, 255, 0.35) !important;}
 .fs-kicker {font-size: 0.72rem; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase;
     color: #5BD48A; margin: 0;}
 .st-key-answer_go {background: linear-gradient(160deg, rgba(91, 212, 138, 0.13),
@@ -969,27 +989,80 @@ if _selected == ":material/local_gas_station: Where to stop":
 
 # ---------------------------------------------------------------- when to fill up
 elif _selected == ":material/calendar_month: When to fill up":
-    st.caption("What this tab answers: is it worth timing your fill-up to the weekly price? "
-               "It tests whether any forecast beats the naive guess that next week equals this "
-               "week.")
-    st.subheader(f"Weekly regular gasoline, $/gal ({series_label})")
+    page_question("Is it worth timing your fill-up to the weekly price?",
+                  "Tests whether any simple forecast beats the naive guess that next week's "
+                  "price equals this week's.")
     s_fl = series["florida"].dropna()
-    st.line_chart(series[["florida", "us"]].dropna().tail(260),
-                  alt="Weekly regular gasoline price, Florida and U.S., last five years")
-    st.markdown("**Does any simple model beat 'next week = this week'?** Rolling-origin "
-                "evaluation on the Florida series, error shown as a ratio to the naive forecast "
-                "(below 1.00 beats naive).")
     ev = rolling_origin_eval(s_fl.to_numpy())
-    rows = [{"method": m, **{f"h={h}": ev[m][h]["ratio_to_naive"] for h in ev[m]}} for m in ev]
-    st.dataframe(pd.DataFrame(rows), hide_index=True,
-                 alt="Forecast error as a ratio to the naive forecast, by method and horizon")
-    st.caption("If nothing beats naive, the honest advice is: prices move too randomly to time "
-               "the week; use the station comparison instead.")
+    # Best non-naive method at any horizon; within TIE of 1.00 counts as no better than naive.
+    best_m, best_h = min(((m, h) for m in ev if m != "naive" for h in ev[m]),
+                         key=lambda mh: ev[mh[0]][mh[1]]["ratio_to_naive"])
+    best_ratio = ev[best_m][best_h]["ratio_to_naive"]
+    beats = best_ratio < 1 - FORECAST_TIE
+    latest, prev = float(s_fl.iloc[-1]), float(s_fl.iloc[-2])
+    avg52 = float(s_fl.tail(52).mean())
+    week = s_fl.index[-1]
+    week = week.strftime("%b %d, %Y") if hasattr(week, "strftime") else str(week)
+    with st.container(border=True, key="answer_when"):
+        st.html('<p class="fs-kicker fs-kicker-blue">The answer</p>')
+        st.header("A simple forecast helps a little" if beats
+                  else "Timing the week doesn't pay", anchor=False)
+        st.markdown(
+            f"{FORECAST_NAMES[best_m]} beats 'next week = this week' by "
+            f"{(1 - best_ratio) * 100:.0f}% at {best_h} week(s) ahead." if beats else
+            "No simple forecast beats 'next week = this week' by more than "
+            f"{FORECAST_TIE * 100:.0f}% at 1, 2 or 4 weeks ahead. Fill up when you need to, "
+            "and use **Where to stop** to choose the station: that is where the money is.")
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Latest Florida price", f"${latest:.2f}/gal", border=True,
+                  help=f"Week of {week} ({series_label}).")
+        c2.metric("Change vs last week", f"{(latest - prev) * 100:+.0f}¢", border=True)
+        c3.metric("Vs 52-week average", f"{(latest - avg52) * 100:+.0f}¢", border=True,
+                  help=f"52-week average: ${avg52:.2f}/gal.")
+        c4.metric("Best forecast vs naive", f"{best_ratio:.3f}×", border=True,
+                  help=f"{FORECAST_NAMES[best_m]}, {best_h} week(s) ahead. Error as a ratio to "
+                       "the naive forecast: below 1.00 is better.")
+
+    with st.container(border=True):
+        card_header(f"Weekly regular gasoline ({series_label})",
+                    "Florida against the U.S. average, last five years, $/gal.",
+                    ":material/show_chart:")
+        recent = series[["florida", "us"]].dropna().tail(260)
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(x=recent.index, y=recent["us"], name="U.S.",
+                                 line=dict(color="#8B93A1", width=1.5)))
+        fig.add_trace(go.Scatter(x=recent.index, y=recent["florida"], name="Florida",
+                                 line=dict(color="#6CB4FF", width=2.5)))
+        fig.update_layout(height=360, margin=dict(l=0, r=0, t=10, b=0), hovermode="x unified",
+                          legend=dict(orientation="h", yanchor="bottom", y=1.0, x=0),
+                          yaxis=dict(title="$/gal", tickprefix="$", tickformat=".2f"),
+                          xaxis=dict(nticks=8))
+        st.plotly_chart(fig, width="stretch",
+                        alt="Weekly regular gasoline price, Florida and U.S., last five years")
+
+    with st.container(border=True):
+        card_header("Does any simple model beat 'next week = this week'?",
+                    "Rolling-origin evaluation on the Florida series: each forecast's error as "
+                    "a ratio to the naive one. Below 1.00 is better; green marks a win.",
+                    ":material/query_stats:")
+        horizons = list(next(iter(ev.values())))
+        table = pd.DataFrame([{"Method": FORECAST_NAMES[m],
+                               **{f"{h} week{'s' if h > 1 else ''} ahead":
+                                  ev[m][h]["ratio_to_naive"] for h in horizons}}
+                              for m in ev])
+        cols = [c for c in table.columns if c != "Method"]
+        styled = (table.style.format("{:.3f}", subset=cols)
+                  .map(lambda v: "color: #5BD48A; font-weight: 600"
+                       if v < 1 - FORECAST_TIE else "", subset=cols))
+        st.dataframe(styled, hide_index=True, width="stretch",
+                     alt="Forecast error as a ratio to the naive forecast, by method and horizon")
+        st.caption(f"Within {FORECAST_TIE * 100:.0f}% of 1.00 counts as a tie with naive "
+                   "(noise between evaluation windows).")
 
 # ---------------------------------------------------------------- EDA
 elif _selected == ":material/analytics: EDA":
-    st.caption("What this tab answers: is the weekly price data clean and what does it look "
-               "like? Check gaps, outliers and distributions before trusting any forecast.")
+    page_question("Is the weekly price data clean, and what does it look like?",
+                  "Gaps, outliers and distributions, checked before trusting any forecast.")
     st.subheader("Exploratory analysis of weekly gasoline prices")
     c_a, c_b = st.columns(2)
     z_thr = c_a.slider("Outlier threshold (SD of weekly change)", 2.0, 5.0, 3.0, 0.5)
@@ -1129,8 +1202,8 @@ elif _selected == ":material/analytics: EDA":
 
 # ---------------------------------------------------------------- sensitivity
 elif _selected == ":material/calculate: Sensitivity":
-    st.caption("What this tab answers: how many extra miles of detour a given price gap is "
-               "worth, at your mpg (Pick your car) and value of time (sidebar).")
+    page_question("How many extra miles of detour is a price gap worth?",
+                  "At your mpg (Pick your car) and value of time (sidebar).")
     st.subheader("How far is a detour worth it?")
     st.write("Break-even extra miles for a price gap (columns, $/gal) and value of time "
              "(rows, $/h), using your gallons, mpg and speed.")

@@ -43,9 +43,10 @@ def test_every_tab_renders_without_an_exception(monkeypatch, name, label):
 
 def test_the_when_tab_compares_forecasts_against_the_naive_one(monkeypatch):
     app = open_tab(monkeypatch, TABS["when"])
-    frames = [d for d in app.dataframe if "method" in getattr(d.value, "columns", [])]
+    frames = [d for d in app.dataframe if "Method" in getattr(d.value, "columns", [])]
     assert frames, "the forecast comparison table is missing"
-    assert "naive" in list(frames[0].value["method"])
+    methods = list(frames[0].value["Method"])
+    assert methods[0].startswith("Naive") and "4-week moving average" in methods
 
 
 def test_the_eda_tab_reports_the_cleaning_it_did(monkeypatch):
@@ -69,3 +70,14 @@ def test_the_sensitivity_table_labels_money_and_time(monkeypatch):
                  and d.value.index.name == "value of time $/h")
     assert list(frame.columns)[0] == "$0.10"
     assert str(frame.index[0]).endswith("/h")
+
+
+
+def test_the_when_tab_leads_with_its_answer(monkeypatch):
+    app = open_tab(monkeypatch, TABS["when"])
+    headers = [h.value for h in app.header]
+    assert headers and headers[0] in ("Timing the week doesn't pay",
+                                      "A simple forecast helps a little")
+    labels = {m.label for m in app.metric}
+    assert {"Latest Florida price", "Change vs last week", "Vs 52-week average",
+            "Best forecast vs naive"} <= labels

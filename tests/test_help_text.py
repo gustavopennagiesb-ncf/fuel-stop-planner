@@ -84,8 +84,8 @@ def test_no_tab_sends_the_user_to_the_sidebar_for_the_mpg(monkeypatch):
     app = AppTest.from_file(str(APP), default_timeout=30)
     app.session_state["main_tabs"] = ":material/calculate: Sensitivity"
     app.run()
-    intros = [c.value for c in app.caption if c.value.startswith(INTRO)]
-    mpg_intro = next(c for c in intros if "detour a given price gap" in c)
+    questions = [h.proto.body for h in app.get("html") if h.proto.body.startswith('<div class="fs-question"')]
+    mpg_intro = next(q for q in questions if "price gap" in q)
     assert "mpg (Pick your car)" in mpg_intro
 
 
@@ -122,3 +122,19 @@ def test_how_to_use_names_the_current_controls(monkeypatch):
     for control in ("Where are you going?", "Pick your car", "How much fuel do you have?"):
         assert control in text
     assert '"Your trip"' not in text and '"Your car"' not in text
+
+
+
+@pytest.mark.parametrize("page", [":material/calendar_month: When to fill up",
+                                  ":material/calculate: Sensitivity",
+                                  ":material/analytics: EDA"])
+def test_each_analysis_page_opens_with_its_question(monkeypatch, page):
+    def offline(*args, **kwargs):
+        raise requests.ConnectionError("offline")
+    monkeypatch.setattr(fueleconomy, "_get", offline)
+    app = AppTest.from_file(str(APP), default_timeout=30)
+    app.session_state["main_tabs"] = page
+    app.run()
+    bodies = [h.proto.body for h in app.get("html") if h.proto.body.startswith('<div class="fs-question"')]
+    assert len(bodies) == 1 and "The question" in bodies[0] and "?" in bodies[0]
+    assert not any(c.value.startswith(INTRO) for c in app.caption)
