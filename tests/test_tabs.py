@@ -41,14 +41,6 @@ def test_every_tab_renders_without_an_exception(monkeypatch, name, label):
     assert not open_tab(monkeypatch, label).exception
 
 
-def test_the_when_tab_compares_forecasts_against_the_naive_one(monkeypatch):
-    app = open_tab(monkeypatch, TABS["when"])
-    frames = [d for d in app.dataframe if "Method" in getattr(d.value, "columns", [])]
-    assert frames, "the forecast comparison table is missing"
-    methods = list(frames[0].value["Method"])
-    assert methods[0].startswith("Naive") and "4-week moving average" in methods
-
-
 def test_the_eda_tab_reports_the_cleaning_it_did(monkeypatch):
     app = open_tab(monkeypatch, TABS["eda"])
     labels = {m.label for m in app.metric}
@@ -73,11 +65,41 @@ def test_the_sensitivity_table_labels_money_and_time(monkeypatch):
 
 
 
-def test_the_when_tab_leads_with_its_answer(monkeypatch):
+VERDICTS = ("Wait a week if you can", "Fill up now", "No clear signal: fill up when you need to")
+
+
+def test_the_when_tab_gives_a_verdict(monkeypatch):
     app = open_tab(monkeypatch, TABS["when"])
     headers = [h.value for h in app.header]
-    assert headers and headers[0] in ("Timing the week doesn't pay",
-                                      "A simple forecast helps a little")
+    assert headers and headers[0] in VERDICTS
     labels = {m.label for m in app.metric}
-    assert {"Latest Florida price", "Change vs last week", "Vs 52-week average",
-            "Best forecast vs naive"} <= labels
+    assert {"Latest Florida price", "Expected change next week", "Crude oil, last 2 weeks",
+            "Track record"} <= labels
+
+
+def test_the_when_tab_shows_the_correlations(monkeypatch):
+    app = open_tab(monkeypatch, TABS["when"])
+    alts = " | ".join(c.alt for c in app.get("plotly_chart")).lower()
+    assert "correlation" in alts and "by month" in alts
+
+
+def test_the_forecast_table_includes_the_crude_model(monkeypatch):
+    app = open_tab(monkeypatch, TABS["when"])
+    frames = [d for d in app.dataframe if "Method" in getattr(d.value, "columns", [])]
+    assert frames, "the forecast comparison table is missing"
+    frame = frames[0].value
+    methods = list(frame["Method"])
+    assert methods[0].startswith("Naive") and "Crude oil + momentum" in methods
+    assert all(c.endswith("(¢)") for c in frame.columns if c != "Method")
+
+
+def test_when_tab_without_crude_keeps_the_old_answer(monkeypatch):
+    from providers import fixtures
+    real = fixtures.synthetic_eia
+    monkeypatch.setattr(fixtures, "synthetic_eia", lambda *a, **k: real(*a, **k).drop(columns="wti"))
+    app = open_tab(monkeypatch, TABS["when"])
+    assert not app.exception
+    assert [h.value for h in app.header][0] in ("Timing the week doesn't pay",
+                                                "A simple forecast helps a little")
+
+
