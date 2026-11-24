@@ -66,17 +66,26 @@ standard deviations are printed so the effect of the treatment is visible.
 Weekly *changes* in Florida and U.S. prices correlate at **r = 0.799**, and the lead-lag analysis
 puts the strongest link at **lag 0**: Florida moves with the national market in the same week,
 not after it. That result matters for the forecasting question below, because it removes the
-obvious candidate predictor.
+obvious candidate predictor (the U.S. price).
+
+Crude oil is the predictor that does lead. Weekly changes in WTI crude (EIA series `PET.RWTC.W`,
+Friday values aligned to the following Monday) correlate with Florida pump changes at
+**r = 0.46** in the same week and **r = 0.37** one week later, fading to about 0.1 after two
+weeks. Pump prices also carry momentum (lag-1 r = 0.23). Seasonality shows too: prices rise on
+average from February to April (about +4 cents a week in March) and fall from October to
+December.
 
 ## 4. Methodology and results
 
-### 4.1 When to fill up: an honest negative result
+### 4.1 When to fill up: simple methods fail, crude oil helps a little
 
 ![Forecast comparison](../screenshots/03-when-to-fill-up.jpg)
 
-Four methods were evaluated with **rolling-origin evaluation** against the naive forecast
-("next week equals this week"), at horizons of 1, 2 and 4 weeks. Errors are reported as a ratio
-to naive, so below 1.00 means better than naive.
+Methods were evaluated with **rolling-origin evaluation** against the naive forecast ("next week
+equals this week"), at horizons of 1, 2 and 4 weeks. Errors are reported as a ratio to naive, so
+below 1.00 means better than naive.
+
+**Negative result: four simple methods.**
 
 | Method | h=1 | h=2 | h=4 |
 |---|---|---|---|
@@ -85,10 +94,31 @@ to naive, so below 1.00 means better than naive.
 | moving average (4) | 1.682 | 1.317 | 1.201 |
 | seasonal naive (52) | 8.675 | 5.071 | 3.352 |
 
-**Nothing beats naive at one week.** Drift ties it at four weeks (0.999), which is within noise.
-The app states this plainly instead of dressing it up: weekly retail gasoline behaves close to a
-random walk, so timing the week is not where the money is. This negative result is reported as a
-finding, and it is what justifies putting the effort into the "where" half instead.
+Nothing beats naive at one week. Drift ties it at four weeks (0.999), which is within noise.
+Weekly retail gasoline behaves close to a random walk when only its own price is used.
+
+**Positive result: crude oil plus momentum.** The second model regresses the next change in the
+Florida pump price on the current pump change, the current crude change and last week's crude
+change (ordinary least squares, one fit per horizon, refit on an expanding window every week from
+week 104, so each forecast uses only the past). Mean error versus naive, full history:
+
+| Horizon | Model miss | Naive miss | Ratio |
+|---|---|---|---|
+| 1 week | 5.5 cents | 6.0 cents | 0.91 |
+| 2 weeks | not tabulated | not tabulated | 0.93 |
+| 4 weeks | not tabulated | not tabulated | 0.98 (a tie) |
+
+The edge is real but modest, and it **shrank over time**. Ratio at one week by period: 2005-09
+0.82, 2010-14 0.83, 2015-19 0.95, 2020-26 0.97. In recent years the model is close to a tie with
+naive, so it should be read as a small, fading advantage, not a trading rule.
+
+The app turns the model into a verdict with a threshold of 3 cents per gallon (an assumption).
+Track record on the same weekly test: when it said "wait" (forecast of -3 cents or lower; 197
+weeks) the price fell 87% of the time, by 5.8 cents on average; when it said "fill up now"
+(+3 cents or more; 235 weeks) the price rose 61% of the time. EIA publishes crude on Wednesdays
+and retail on Mondays, so when this week's crude is missing the model uses last week's crude
+and says so. The page shows the verdict, its reason, the track record, and the evidence behind
+it (correlation by lag, average change by month).
 
 ### 4.2 Where to stop: the cheapest station is often the wrong one
 

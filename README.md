@@ -1,7 +1,7 @@
 # Fuel Stop Planner
 
-Streamlit app that helps a driver decide **when** to fill up (EIA weekly gasoline prices,
-rolling-origin forecast evaluation against a naive baseline) and **where** to stop on a route
+Streamlit app that helps a driver decide **when** to fill up (EIA weekly gasoline prices and WTI crude oil,
+a crude-oil + momentum forecast checked by rolling-origin evaluation against a naive baseline) and **where** to stop on a route
 (stations along the corridor, detour break-even using fuel economy and the value of time),
 whether a stop is **needed at all** and how many gallons to buy given the fuel already in the
 tank, with an **LLM assistant whose numbers are checked against the calculation**.
@@ -16,6 +16,7 @@ Every API below returns **JSON** over HTTPS. The retrieval and parsing live in `
 | Need | Source | Endpoint | Key | What is read |
 |---|---|---|---|---|
 | Weekly regular gasoline, Florida and U.S. | EIA Open Data API v2 | `GET /v2/petroleum/pri/gnd/data/` | free key | `response.total`, `response.data[]` with `period` and `value` |
+| Weekly WTI crude oil spot, $/bbl | EIA Open Data API v2 | `GET /v2/seriesid/PET.RWTC.W` | same free key | `response.data[]` with `period` and `value`; the Friday value is aligned to the following Monday and joined to the retail series |
 | Station prices | Google Places API (New) | `POST /v1/places:searchNearby` | server key | `places[]` with `id`, `displayName.text`, `location.latitude/longitude`, `fuelOptions.fuelPrices[]` |
 | Route and detour | Google Routes API v2 | `POST /directions/v2:computeRoutes` | server key | `routes[0]` with `distanceMeters`, `duration`, `polyline.encodedPolyline` |
 | Car mpg | fueleconomy.gov web services (EPA/DOE) | `GET /ws/rest/vehicle/...` | none | `menuItem[]` cascade, then `city08`, `comb08`, `highway08`, `fuelType` |
@@ -28,15 +29,15 @@ Both Google calls send a **field mask**, so only the fields above are requested 
 
 | Structure | Where | Columns / fields |
 |---|---|---|
-| `pandas.DataFrame`, weekly `DatetimeIndex` | the EIA series | `florida`, `us` (float, $/gal) |
+| `pandas.DataFrame`, weekly `DatetimeIndex` | the EIA series | `florida`, `us` (float, $/gal), `wti` (float, $/bbl; absent if the crude fetch failed) |
 | `list[dict]` | one station | `id`, `name`, `lat`, `lng`, `price`, `price_updated`, `synthetic` |
 | `list[dict]` | a ranked station (adds) | `extra_miles`, `extra_minutes`, `net_benefit`, `detour_source` |
 | `list[tuple]` | the route | `(lat, lng)` points decoded from the polyline in `geo.py` |
 
 ### Stored data
 
-`data/eia_weekly.csv` (in this repository) is the weekly EIA series: three columns, `period`,
-`florida`, `us`. It is public U.S. government data. The app refreshes it when the API answers
+`data/eia_weekly.csv` (in this repository) is the weekly EIA series: four columns, `period`,
+`florida`, `us`, `wti` (WTI crude, $/bbl). It is public U.S. government data. The app refreshes it when the API answers
 and falls back to it when the API is down. Google Places and Routes responses are **never**
 written to disk: Google's terms allow storing only place IDs.
 
@@ -94,7 +95,7 @@ In `google` mode (day-1 check passed: Places returns U.S. fuel prices):
 ## Structure
 - `app.py` UI (sidebar navigation, answer first: Where to stop · When to fill up · Sensitivity · EDA · How to use; a "Start here" strip of trip, car and fuel chips edited in popovers; an AI assistant button on every page; fill-up and time settings in the sidebar) · `.streamlit/config.toml` dark theme · `services.py` provider switch · `config.py` env flags
 - `providers/` `eia.py`, `places.py`, `routes.py`, `fixtures.py` (synthetic)
-- `gmap.py` Google Maps JS embed · `geo.py` polyline + corridor filter · `detour.py` break-even math · `forecast.py` baselines · `fuelplan.py` trip fuel, reachability and gallons per station · `driver.py` fuel reserve
+- `gmap.py` Google Maps JS embed · `geo.py` polyline + corridor filter · `detour.py` break-even math · `forecast.py` baselines, crude + momentum model, verdict and track record · `fuelplan.py` trip fuel, reachability and gallons per station · `driver.py` fuel reserve
 - `llm.py` provider interface, number validator, template fallback
 - `tests/` unit tests
 
