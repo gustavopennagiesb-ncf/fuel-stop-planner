@@ -30,7 +30,8 @@ import trip_input as ti
 from detour import (DEFAULTS, breakeven_miles, rank_stations, reference_price,
                     sensitivity_table)
 from forecast import (METHODS, SIGNAL_THRESHOLD, crude_model, crude_signal, lagged_corr,
-                      monthly_change_profile, rolling_origin_eval, signal_track_record,
+                      monthly_change_profile, rolling_origin_eval, signal_text,
+                      signal_track_record, signed_cents,
                       treat_series)
 from gmap import build_map_html
 from llm import AnthropicProvider, GroqProvider, ask, explain
@@ -1049,37 +1050,16 @@ elif _selected == ":material/calendar_month: When to fill up":
     with st.container(border=True, key="answer_when"):
         st.html('<p class="fs-kicker fs-kicker-blue">The answer</p>')
         if sig:
-            cents = sig["forecast"] * 100
             verdict = sig["verdict"]
             st.header({"wait": "Wait a week if you can", "fill": "Fill up now",
                        "none": "No clear signal: fill up when you need to"}[verdict], anchor=False)
-            if verdict == "none":
-                move = (f"Next week's Florida price is expected to move only about "
-                        f"{abs(cents):.0f}¢/gal, too small to act on.")
-            else:
-                word = "fall" if cents < 0 else "rise"
-                move = (f"Next week's Florida price is expected to {word} about "
-                        f"{abs(cents):.0f}¢/gal")
-                if gallons_used > 0:
-                    move += f", about ${abs(sig['forecast']) * gallons_used:.2f} on the " \
-                            f"{gallons_used:.0f} gal you buy"
-                move += "."
-            cc, pc = sig["crude_change_2w"] * 100, sig["pump_change_1w"] * 100
-            why = (f"Crude oil {'rose' if cc >= 0 else 'fell'} {abs(cc):.0f}¢/gal over the last "
-                   f"two weeks and the pump price {'rose' if pc >= 0 else 'fell'} "
-                   f"{abs(pc):.0f}¢ last week; pump prices follow crude within about a week.")
-            since = pd.DatetimeIndex(s_fl.index)[0].year + 2 if len(s_fl) else 2005
-            def _rec(kind, did, word):
-                r = track_rec[kind]
-                return (f"{did}, the price {word} the next week in {r['hit'] * 100:.0f}% of "
-                        f"{r['n']} weeks since {since}.")
-            wait_s = _rec("wait", "When the model said wait", "fell") if track_rec["wait"]["n"] else ""
-            fill_s = (_rec("fill", "When the model said fill up now", "rose")
-                      if track_rec["fill"]["n"] else "")
-            track = {"wait": wait_s, "fill": fill_s,
-                     "none": " ".join(x for x in (wait_s, fill_s) if x)}[verdict]
+            txt = signal_text(sig, track_rec, gallons_used)
+            move, why, track = txt["move"], txt["why"], txt["track"]
+            late = sig.get("crude_lag_weeks") == 1
             st.markdown(f"{move} {why}" + (f"\n\n{track}" if track else ""))
-            st.caption(f"Verdict uses a {SIGNAL_THRESHOLD * 100:.0f}¢/gal threshold, an "
+            st.caption(("This week's crude price is not published yet (EIA updates it on "
+                        "Wednesdays); the forecast uses the latest crude week available. "
+                        if late else "") + f"Verdict uses a {SIGNAL_THRESHOLD * 100:.0f}¢/gal threshold, an "
                        "assumption. Model: last week's pump change and the last two weeks of "
                        "crude-oil change, refitted every week on past data only.")
         else:
@@ -1093,14 +1073,14 @@ elif _selected == ":material/calendar_month: When to fill up":
                 "and use **Where to stop** to choose the station: that is where the money is.")
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("Latest Florida price", f"${latest:.2f}/gal", border=True,
-                  help=f"Week of {week} ({series_label}); {(latest - prev) * 100:+.0f}¢ vs last "
-                       f"week, {(latest - avg52) * 100:+.0f}¢ vs the 52-week average "
+                  help=f"Week of {week} ({series_label}); {signed_cents((latest - prev) * 100)}¢ vs last "
+                       f"week, {signed_cents((latest - avg52) * 100)}¢ vs the 52-week average "
                        f"(${avg52:.2f}/gal).")
         if sig:
-            c2.metric("Expected change next week", f"{sig['forecast'] * 100:+.0f}¢/gal",
+            c2.metric("Expected change next week", f"{signed_cents(sig['forecast'] * 100)}¢/gal",
                       border=True, help="The crude-oil model's forecast of next week's Florida "
                       "price minus this week's.")
-            c3.metric("Crude oil, last 2 weeks", f"{sig['crude_change_2w'] * 100:+.0f}¢/gal",
+            c3.metric("Crude oil, last 2 weeks", f"{signed_cents(sig['crude_change_2w'] * 100)}¢/gal",
                       border=True, help="Change in the WTI crude price over two weeks, in "
                       "dollars per gallon (barrel price / 42).")
             hit = track_rec["wait" if sig["verdict"] == "wait" else "fill"]
@@ -1110,8 +1090,8 @@ elif _selected == ":material/calendar_month: When to fill up":
                       border=True, help="How often the called move happened the next week, "
                       "replaying the model on past weeks.")
         else:
-            c2.metric("Change vs last week", f"{(latest - prev) * 100:+.0f}¢", border=True)
-            c3.metric("Vs 52-week average", f"{(latest - avg52) * 100:+.0f}¢", border=True,
+            c2.metric("Change vs last week", f"{signed_cents((latest - prev) * 100)}¢", border=True)
+            c3.metric("Vs 52-week average", f"{signed_cents((latest - avg52) * 100)}¢", border=True,
                       help=f"52-week average: ${avg52:.2f}/gal.")
             c4.metric("Best forecast vs naive", f"{best_ratio:.3f}×", border=True,
                       help=f"{names[best_m]}, {best_h} week(s) ahead. Error as a ratio to "

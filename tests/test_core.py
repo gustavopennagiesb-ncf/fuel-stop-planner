@@ -11,7 +11,7 @@ import requests
 import geo
 from detour import breakeven_miles, net_benefit, rank_stations, reference_price, sensitivity_table
 from forecast import (SIGNAL_THRESHOLD, crude_model, crude_signal, lagged_corr, monthly_change_profile, naive,
-                      rolling_origin_eval, signal_track_record, treat_series, weekly_changes_outliers)
+                      rolling_origin_eval, signal_text, signal_track_record, signed_cents, treat_series, weekly_changes_outliers)
 from geo import corridor_filter, decode_polyline, encode_polyline, haversine_m, path_length_m
 from llm import AnthropicProvider, GroqProvider, ask, explain, template_explanation, validate
 from providers import eia, fixtures, places, routes
@@ -587,3 +587,57 @@ def test_track_record_counts_hits():
 def test_monthly_profile_has_twelve_months():
     prof = monthly_change_profile(fixtures.synthetic_eia()["florida"])
     assert list(prof.index) == list(range(1, 13))
+
+
+def test_crude_signal_uses_the_latest_crude_week_when_this_weeks_is_missing():
+    p, c = _lead_series()
+    c = c.copy()
+    c[-1] = np.nan
+    sig = crude_signal(p, c)
+    assert sig is not None and sig["crude_lag_weeks"] == 1
+    assert sig["crude_change_2w"] == pytest.approx(c[-2] - c[-4])
+    assert crude_signal(*_lead_series())["crude_lag_weeks"] == 0
+
+
+def test_track_record_reports_the_first_scored_year():
+    p, c = _lead_series()
+    dates = pd.date_range("2004-01-05", periods=len(p), freq="W-MON")
+    rec = signal_track_record(p, c, dates=dates)
+    assert rec["since"] == dates[104 + 1].year
+
+
+def test_signed_cents_never_prints_negative_zero():
+    assert [signed_cents(x) for x in (-0.4, 0.4, -0.6, 0, 7.2, -7.2)] == \
+        ["0", "0", "-1", "0", "+7", "-7"]
+
+
+def _sig(verdict="wait", fc=-0.07, lag=0):
+    return {"forecast": fc, "verdict": verdict, "pump_change_1w": -0.20,
+            "crude_change_2w": -0.35, "crude_lag_weeks": lag}
+
+
+_REC = {"wait": {"n": 197, "hit": 0.87}, "fill": {"n": 235, "hit": 0.61}, "since": 2005}
+
+
+def test_signal_text_sentences():
+    t = signal_text(_sig(), _REC, 10)
+    assert t["move"] == ("Next week's Florida price is expected to fall about 7¢/gal, "
+                         "about $0.70 on the 10 gal you buy.")
+    assert t["why"] == ("Crude oil fell 35¢/gal over the last two weeks and the pump price fell "
+                        "20¢ last week; pump prices follow crude within about a week.")
+    assert t["track"] == ("When the model said wait, the price fell the next week in 87% of "
+                          "197 weeks since 2005.")
+
+
+def test_signal_text_drops_dollars_without_gallons_and_words_a_late_crude_week():
+    t = signal_text(_sig(lag=1), _REC, 0)
+    assert "$" not in t["move"] and t["move"].endswith("7¢/gal.")
+    assert "over the two latest weeks of data" in t["why"]
+
+
+def test_signal_text_fill_and_none():
+    assert "said fill up now, the price rose the next week in 61% of 235 weeks" in \
+        signal_text(_sig("fill", 0.05), _REC, 10)["track"]
+    t = signal_text(_sig("none", 0.01), _REC, 10)
+    assert "too small to act on" in t["move"]
+    assert "87%" in t["track"] and "61%" in t["track"]

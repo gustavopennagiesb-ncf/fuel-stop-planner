@@ -164,6 +164,11 @@ def crude_signal(p, c, threshold=SIGNAL_THRESHOLD):
     n = len(p)
     if n < 3 or len(c) != n:
         return None
+    lag = 0
+    if np.isnan(c[-1]) and n > 3 and not np.isnan(c[:-1]).all():
+        # newest week's crude is not published yet: use the latest crude weeks available
+        c = np.r_[np.nan, c[:-1]]
+        lag = 1
     X = _features(p, c)
     beta = _fit(X, p, 1, n - 1)
     ok = ~np.isnan(X[2:n - 1]).any(axis=1) & ~np.isnan(p[3:] - p[2:-1])
@@ -172,7 +177,8 @@ def crude_signal(p, c, threshold=SIGNAL_THRESHOLD):
     fc = float(X[-1] @ beta)
     verdict = "wait" if fc <= -threshold else "fill" if fc >= threshold else "none"
     return {"forecast": fc, "verdict": verdict,
-            "pump_change_1w": float(p[-1] - p[-2]), "crude_change_2w": float(c[-1] - c[-3])}
+            "pump_change_1w": float(p[-1] - p[-2]), "crude_change_2w": float(c[-1] - c[-3]),
+            "crude_lag_weeks": lag}
 
 
 _PERIODS = (("2005-2009", 2005, 2009), ("2010-2014", 2010, 2014),
@@ -211,6 +217,7 @@ def signal_track_record(p, c, threshold=SIGNAL_THRESHOLD, min_train=104, dates=N
             if m.any() and en[m].mean() > 0:
                 ratios[label] = float(em[m].mean() / en[m].mean())
         out["ratio_by_period"] = ratios
+        out["since"] = int(years[0]) if len(years) else None
     return out
 
 
@@ -219,3 +226,39 @@ def monthly_change_profile(series):
     d = pd.Series(series, dtype=float).dropna().diff().dropna()
     prof = d.groupby(pd.DatetimeIndex(d.index).month).mean()
     return prof.reindex(range(1, 13))
+
+
+def signed_cents(cents):
+    """'+7' / '-7' / '0': rounds first, so a tiny negative never prints as '-0'."""
+    r = round(float(cents))
+    return "0" if r == 0 else f"{r:+d}"
+
+
+def signal_text(sig, rec, gallons):
+    """The verdict's three sentences: {'move', 'why', 'track'}. `gallons` <= 0 drops the dollars."""
+    cents = sig["forecast"] * 100
+    if sig["verdict"] == "none":
+        move = (f"Next week's Florida price is expected to move only about "
+                f"{abs(cents):.0f}¢/gal, too small to act on.")
+    else:
+        move = (f"Next week's Florida price is expected to {'fall' if cents < 0 else 'rise'} "
+                f"about {abs(cents):.0f}¢/gal")
+        if gallons > 0:
+            move += f", about ${abs(sig['forecast']) * gallons:.2f} on the {gallons:.0f} gal you buy"
+        move += "."
+    cc, pc = sig["crude_change_2w"] * 100, sig["pump_change_1w"] * 100
+    span = "the two latest weeks of data" if sig.get("crude_lag_weeks") == 1 else "the last two weeks"
+    why = (f"Crude oil {'rose' if cc >= 0 else 'fell'} {abs(cc):.0f}¢/gal over {span} and the "
+           f"pump price {'rose' if pc >= 0 else 'fell'} {abs(pc):.0f}¢ last week; pump prices "
+           "follow crude within about a week.")
+    since = rec.get("since")
+
+    def line(kind, did, word):
+        r = rec[kind]
+        return (f"{did}, the price {word} the next week in {r['hit'] * 100:.0f}% of {r['n']} "
+                f"weeks since {since}.") if r["n"] else ""
+    wait_s = line("wait", "When the model said wait", "fell")
+    fill_s = line("fill", "When the model said fill up now", "rose")
+    track = {"wait": wait_s, "fill": fill_s,
+             "none": " ".join(x for x in (wait_s, fill_s) if x)}[sig["verdict"]]
+    return {"move": move, "why": why, "track": track}
