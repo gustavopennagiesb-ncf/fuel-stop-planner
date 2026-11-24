@@ -89,7 +89,7 @@ def test_the_forecast_table_includes_the_crude_model(monkeypatch):
     assert frames, "the forecast comparison table is missing"
     frame = frames[0].value
     methods = list(frame["Method"])
-    assert methods[0].startswith("Naive") and "Crude oil + momentum" in methods
+    assert methods[0].startswith("No change") and "Crude oil + momentum" in methods
     assert all(c.endswith("(¢)") for c in frame.columns if c != "Method")
 
 
@@ -103,3 +103,43 @@ def test_when_tab_without_crude_keeps_the_old_answer(monkeypatch):
                                                 "A simple forecast helps a little")
 
 
+
+
+def _with_signal(monkeypatch, **changes):
+    import forecast
+    real = forecast.signal_and_record
+
+    def patched(*a, **k):
+        sig, rec = real(*a, **k)
+        return {**sig, **changes}, rec
+    monkeypatch.setattr(forecast, "signal_and_record", patched)
+
+
+def test_no_clear_signal_shows_the_small_move_and_no_track_record(monkeypatch):
+    _with_signal(monkeypatch, verdict="none", forecast=-0.026)
+    app = open_tab(monkeypatch, TABS["when"])
+    metrics = {m.label: m.value for m in app.metric}
+    assert metrics["Expected change next week"] == "-2.6¢/gal"
+    assert metrics["Track record"] == "n/a"
+    assert "less than 3¢/gal" in " ".join(m.value for m in app.markdown)
+
+
+def test_a_late_crude_week_says_the_lighter_forecast_is_used(monkeypatch):
+    from providers import fixtures
+    real = fixtures.synthetic_eia
+
+    def late(*a, **k):
+        df = real(*a, **k)
+        df.iloc[-1, df.columns.get_loc("wti")] = float("nan")
+        return df
+    monkeypatch.setattr(fixtures, "synthetic_eia", late)
+    app = open_tab(monkeypatch, TABS["when"])
+    assert not app.exception
+    caps = " ".join(c.value for c in app.caption)
+    assert "lighter forecast" in caps and "Wednesday" in caps
+
+
+def test_the_when_tab_avoids_the_word_naive(monkeypatch):
+    app = open_tab(monkeypatch, TABS["when"])
+    visible = " ".join([*(m.value for m in app.markdown), *(c.value for c in app.caption)])
+    assert "naive" not in visible.lower()

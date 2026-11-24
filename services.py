@@ -29,6 +29,10 @@ def load_series(provider: str = None):
 def save_series(df, path=CACHE_PATH):
     """Store the EIA series locally (public US government data, safe to keep in the repo)."""
     os.makedirs(os.path.dirname(path), exist_ok=True)
+    if "wti" not in df.columns:  # crude fetch failed this time: keep the crude weeks already cached
+        cached = load_cached_series(path)
+        if cached is not None and "wti" in cached:
+            df = df.assign(wti=cached["wti"].reindex(df.index))
     df.to_csv(path)
 
 

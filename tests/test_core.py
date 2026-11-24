@@ -11,7 +11,7 @@ import requests
 import geo
 from detour import breakeven_miles, net_benefit, rank_stations, reference_price, sensitivity_table
 from forecast import (SIGNAL_THRESHOLD, crude_model, crude_signal, lagged_corr, monthly_change_profile, naive,
-                      rolling_origin_eval, signal_text, signal_track_record, signed_cents, treat_series, weekly_changes_outliers)
+                      rolling_origin_eval, signal_and_record, signal_text, signal_track_record, signed_cents, treat_series, weekly_changes_outliers)
 from geo import corridor_filter, decode_polyline, encode_polyline, haversine_m, path_length_m
 from llm import AnthropicProvider, GroqProvider, ask, explain, template_explanation, validate
 from providers import eia, fixtures, places, routes
@@ -611,6 +611,36 @@ def test_signed_cents_never_prints_negative_zero():
         ["0", "0", "-1", "0", "+7", "-7"]
 
 
+def test_signed_cents_decimals():
+    assert [signed_cents(x, 1) for x in (-2.6, 2.64, -0.04, 0.0, 7.34)] == \
+        ["-2.6", "+2.6", "0.0", "0.0", "+7.3"]
+
+
+def test_a_late_crude_signal_is_paired_with_a_late_crude_record():
+    p, c = _lead_series()
+    c = c.copy()
+    c[-1] = np.nan
+    dates = pd.date_range("2004-01-05", periods=len(p), freq="W-MON")
+    sig, rec = signal_and_record(p, c, dates)
+    assert sig["crude_lag_weeks"] == 1
+    shifted = signal_track_record(p, np.r_[np.nan, c[:-1]], dates=dates)
+    same_week = signal_track_record(p, c, dates=dates)
+    assert repr(rec) == repr(shifted) and repr(rec) != repr(same_week)
+    sig0, rec0 = signal_and_record(*_lead_series(), dates)
+    assert sig0["crude_lag_weeks"] == 0 and rec0["wait"]["n"] > 0
+
+
+def test_the_last_period_is_open_ended_and_labelled_from_the_data():
+    p, c = _lead_series(1000)
+    dates = pd.date_range("2005-01-03", periods=len(p), freq="W-MON")
+    labels = list(signal_track_record(p, c, dates=dates)["ratio_by_period"])
+    assert labels[-1] == f"2020-{dates[-1].year}"
+    later = pd.date_range("2012-01-02", periods=len(p), freq="W-MON")  # runs past 2026
+    assert later[-1].year > 2026
+    assert list(signal_track_record(p, c, dates=later)["ratio_by_period"])[-1] == \
+        f"2020-{later[-1].year}"
+
+
 def _sig(verdict="wait", fc=-0.07, lag=0):
     return {"forecast": fc, "verdict": verdict, "pump_change_1w": -0.20,
             "crude_change_2w": -0.35, "crude_lag_weeks": lag}
@@ -640,4 +670,27 @@ def test_signal_text_fill_and_none():
         signal_text(_sig("fill", 0.05), _REC, 10)["track"]
     t = signal_text(_sig("none", 0.01), _REC, 10)
     assert "too small to act on" in t["move"]
+    assert "less than 3¢/gal" in t["move"] and "about 0" not in t["move"]
     assert "87%" in t["track"] and "61%" in t["track"]
+
+
+def test_signal_text_prints_one_decimal_gallons_and_calls_zero_moves_flat():
+    t = signal_text(_sig(fc=-0.07), _REC, 12.6)
+    assert "on the 12.6 gal you buy" in t["move"]
+    assert "on the 10 gal you buy" in signal_text(_sig(fc=-0.07), _REC, 10)["move"]
+    flat = signal_text({**_sig(), "crude_change_2w": -0.004, "pump_change_1w": 0.002}, _REC, 10)
+    assert "Crude oil was flat over" in flat["why"] and "pump price was flat last week" in flat["why"]
+    assert "0¢" not in flat["why"]
+
+
+def test_save_series_keeps_the_cached_crude_when_the_new_fetch_lacks_it(tmp_path):
+    from services import load_cached_series, save_series
+    df = fixtures.synthetic_eia().head(60)
+    p = str(tmp_path / "eia.csv")
+    save_series(df, p)
+    newer = df.drop(columns="wti").iloc[10:]
+    save_series(newer, p)
+    back = load_cached_series(p)
+    assert "wti" in back and np.allclose(back["wti"].dropna(), df["wti"].loc[back.index].dropna())
+    save_series(df.assign(wti=1.0), p)  # a fresh crude column replaces the cache
+    assert (load_cached_series(p)["wti"] == 1.0).all()

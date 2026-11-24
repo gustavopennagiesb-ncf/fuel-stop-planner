@@ -112,12 +112,22 @@ The edge is real but modest, and it **shrank over time**. Ratio at one week by p
 0.82, 2010-14 0.83, 2015-19 0.95, 2020-26 0.97. In recent years the model is close to a tie with
 naive, so it should be read as a small, fading advantage, not a trading rule.
 
+The 0.91 above is the replay that scores the model every week (1,122 weeks). The page's
+comparison table scores every fourth week (the rolling-origin step), which gives about 0.92 at
+one week on the current data (0.925), so the two figures differ only by the sampling of weeks.
+
 The app turns the model into a verdict with a threshold of 3 cents per gallon (an assumption).
-Track record on the same weekly test: when it said "wait" (forecast of -3 cents or lower; 197
+Track record on the same weekly test: when it said "wait" (forecast of -3 cents or lower; 198
 weeks) the price fell 87% of the time, by 5.8 cents on average; when it said "fill up now"
 (+3 cents or more; 235 weeks) the price rose 61% of the time. EIA publishes crude on Wednesdays
 and retail on Mondays, so when this week's crude is missing the model uses last week's crude
-and says so. The page shows the verdict, its reason, the track record, and the evidence behind
+and says so. That early-week fallback (Monday to Wednesday every week, and the live state
+when this was last run) is **weaker**: replayed on the same data with last week's crude, "wait"
+was right 78% of 159 calls (against 87% of 198) and "fill up now" 52% of 207 (against 61% of
+235), and the one-week ratio by period is 0.85 (2005-09), 0.85 (2010-14), 1.02 (2015-19) and
+1.03 (2020-26), so since 2015 it is no better than naive; the full-history one-week ratio is
+0.96 instead of 0.91. The page therefore pairs the lighter forecast with its own track record and
+says so until EIA posts the crude on Wednesday. The page shows the verdict, its reason, the track record, and the evidence behind
 it (correlation by lag, average change by month).
 
 ### 4.2 Where to stop: the cheapest station is often the wrong one

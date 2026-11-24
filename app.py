@@ -29,17 +29,17 @@ import recommend
 import trip_input as ti
 from detour import (DEFAULTS, breakeven_miles, rank_stations, reference_price,
                     sensitivity_table)
-from forecast import (METHODS, SIGNAL_THRESHOLD, crude_model, crude_signal, lagged_corr,
-                      monthly_change_profile, rolling_origin_eval, signal_text,
-                      signal_track_record, signed_cents,
+from forecast import (METHODS, SIGNAL_THRESHOLD, crude_model, lagged_corr,
+                      monthly_change_profile, rolling_origin_eval, signal_and_record,
+                      signal_text, signed_cents,
                       treat_series)
 from gmap import build_map_html
 from llm import AnthropicProvider, GroqProvider, ask, explain
 from providers import fueleconomy
 from services import compute_detours, load_series, load_trip
 
-FORECAST_TIE = 0.02  # assumption: a ratio within 2% of naive is noise, not a win
-FORECAST_NAMES = {"naive": "Naive: next week = this week", "drift": "Drift (recent trend)",
+FORECAST_TIE = 0.02  # assumption: a ratio within 2% of "no change" is noise, not a win
+FORECAST_NAMES = {"naive": "No change (next week = this week)", "drift": "Drift (recent trend)",
                   "moving_avg_4": "4-week moving average",
                   "seasonal_naive_52": "Same week last year"}
 
@@ -51,8 +51,8 @@ def _forecast_eval(y, _methods, crude):
 
 
 @st.cache_data(show_spinner=False)
-def _signal_record(p, c, dates):
-    return signal_track_record(p, c, dates=dates)
+def _signal_and_record(p, c, dates):
+    return signal_and_record(p, c, dates)
 
 FE_RETRY_S = 60  # seconds before the car lookup is tried again after fueleconomy.gov failed
 
@@ -633,7 +633,9 @@ if _selected == ":material/help: How to use":
         "fuel saved minus the extra fuel and time of the detour. With your fuel level set, it "
         "says *No stop needed* or which reachable station to use and how many gallons to buy.\n"
         "- *Is this a good week to fill up?* → **When to fill up**: weekly Florida/U.S. prices "
-        "and a check of whether any simple forecast beats 'next week = this week'.\n"
+        "and a verdict (wait a week, fill up now, or no clear signal) from crude oil and "
+        "price momentum, with its track record, plus a check of whether any simple forecast "
+        "beats guessing 'next week = this week'.\n"
         "- *How much is a detour worth?* → **Sensitivity**: extra miles a detour is worth for "
         "each price gap.\n"
         "- *Where does the price data come from and is it clean?* → **EDA**: missing-data and "
@@ -1026,8 +1028,8 @@ if _selected == ":material/local_gas_station: Where to stop":
 # ---------------------------------------------------------------- when to fill up
 elif _selected == ":material/calendar_month: When to fill up":
     page_question("Is it worth timing your fill-up to the weekly price?",
-                  "Tests whether any simple forecast beats the naive guess that next week's "
-                  "price equals this week's.")
+                  "Tests whether any simple forecast beats guessing no change: that next "
+                  "week's price equals this week's.")
     s_fl = series["florida"].dropna()
     has_crude = "wti" in series and series["wti"].reindex(s_fl.index).notna().any()
     crude_gal = (series["wti"].reindex(s_fl.index) / 42.0).to_numpy() if has_crude else None
@@ -1035,8 +1037,8 @@ elif _selected == ":material/calendar_month: When to fill up":
     if has_crude:
         methods["crude"] = crude_model(crude_gal)
     ev = _forecast_eval(s_fl.to_numpy(), methods, crude_gal)
-    sig = crude_signal(s_fl.to_numpy(), crude_gal) if has_crude else None
-    track_rec = (_signal_record(s_fl.to_numpy(), crude_gal, tuple(s_fl.index)) if sig else None)
+    sig, track_rec = (_signal_and_record(s_fl.to_numpy(), crude_gal, tuple(s_fl.index))
+                      if has_crude else (None, None))
     names = {**FORECAST_NAMES, "crude": "Crude oil + momentum"}
     # Best non-naive method at any horizon; within TIE of 1.00 counts as no better than naive.
     best_m, best_h = min(((m, h) for m in ev if m != "naive" for h in ev[m]),
@@ -1057,8 +1059,9 @@ elif _selected == ":material/calendar_month: When to fill up":
             move, why, track = txt["move"], txt["why"], txt["track"]
             late = sig.get("crude_lag_weeks") == 1
             st.markdown(f"{move} {why}" + (f"\n\n{track}" if track else ""))
-            st.caption(("This week's crude price is not published yet (EIA updates it on "
-                        "Wednesdays); the forecast uses the latest crude week available. "
+            st.caption(("This week's crude price is not published yet (EIA posts it on "
+                        "Wednesdays), so this lighter forecast uses last week's crude, and its "
+                        "track record is for the same lighter version, until then. "
                         if late else "") + f"Verdict uses a {SIGNAL_THRESHOLD * 100:.0f}¢/gal threshold, an "
                        "assumption. Model: last week's pump change and the last two weeks of "
                        "crude-oil change, refitted every week on past data only.")
@@ -1077,25 +1080,26 @@ elif _selected == ":material/calendar_month: When to fill up":
                        f"week, {signed_cents((latest - avg52) * 100)}¢ vs the 52-week average "
                        f"(${avg52:.2f}/gal).")
         if sig:
-            c2.metric("Expected change next week", f"{signed_cents(sig['forecast'] * 100)}¢/gal",
+            fc_c = sig["forecast"] * 100
+            c2.metric("Expected change next week",
+                      f"{signed_cents(fc_c, 1 if abs(fc_c) < SIGNAL_THRESHOLD * 100 else 0)}¢/gal",
                       border=True, help="The crude-oil model's forecast of next week's Florida "
                       "price minus this week's.")
             c3.metric("Crude oil, last 2 weeks", f"{signed_cents(sig['crude_change_2w'] * 100)}¢/gal",
                       border=True, help="Change in the WTI crude price over two weeks, in "
                       "dollars per gallon (barrel price / 42).")
-            hit = track_rec["wait" if sig["verdict"] == "wait" else "fill"]
-            if sig["verdict"] == "none" or not hit["n"]:
-                hit = max(track_rec["wait"], track_rec["fill"], key=lambda r: r["n"])
-            c4.metric("Track record", f"{hit['hit'] * 100:.0f}%" if hit["n"] else "n/a",
+            hit = track_rec.get(sig["verdict"])  # only wait and fill calls have a record
+            c4.metric("Track record", f"{hit['hit'] * 100:.0f}%" if hit and hit["n"] else "n/a",
                       border=True, help="How often the called move happened the next week, "
-                      "replaying the model on past weeks.")
+                      "replaying the model on past weeks. A record exists only for wait and "
+                      "fill calls, so it shows n/a when there is no clear signal.")
         else:
             c2.metric("Change vs last week", f"{signed_cents((latest - prev) * 100)}¢", border=True)
             c3.metric("Vs 52-week average", f"{signed_cents((latest - avg52) * 100)}¢", border=True,
                       help=f"52-week average: ${avg52:.2f}/gal.")
-            c4.metric("Best forecast vs naive", f"{best_ratio:.3f}×", border=True,
+            c4.metric("Best forecast vs no change", f"{best_ratio:.3f}×", border=True,
                       help=f"{names[best_m]}, {best_h} week(s) ahead. Error as a ratio to "
-                           "the naive forecast: below 1.00 is better.")
+                           "guessing no change: below 1.00 is better.")
 
     with st.container(border=True):
         card_header(f"Weekly regular gasoline ({series_label})",
@@ -1116,11 +1120,11 @@ elif _selected == ":material/calendar_month: When to fill up":
 
     if has_crude:
         with st.container(border=True):
-            card_header("Crude oil leads the pump price by about a week",
+            card_header("Pump prices follow crude oil within a week",
                         "Correlation of weekly changes: Florida pump price against crude "
                         "oil some weeks earlier.", ":material/oil_barrel:")
             lc = lagged_corr(s_fl, pd.Series(crude_gal, index=s_fl.index), 4)
-            figc = go.Figure(go.Bar(x=[f"{k} wk" if k != 1 else "1 wk" for k in lc],
+            figc = go.Figure(go.Bar(x=[f"{k} wk" for k in lc],
                                     y=list(lc.values()), marker_color="#6CB4FF"))
             figc.update_layout(height=260, margin=dict(l=0, r=0, t=10, b=0),
                                yaxis=dict(title="correlation"),
@@ -1148,7 +1152,7 @@ elif _selected == ":material/calendar_month: When to fill up":
     with st.container(border=True):
         card_header("Does any simple model beat 'next week = this week'?",
                     "Rolling-origin evaluation on the Florida series: each forecast's average "
-                    "miss in cents per gallon. Lower is better; green marks a win over naive.",
+                    "miss in cents per gallon. Lower is better; green marks a win over guessing no change.",
                     ":material/query_stats:")
         horizons = list(next(iter(ev.values())))
         table = pd.DataFrame([{"Method": names[m],
@@ -1164,10 +1168,10 @@ elif _selected == ":material/calendar_month: When to fill up":
                                       for mth in table["Method"]], subset=cols))
         st.dataframe(styled, hide_index=True, width="stretch",
                      alt="Average forecast miss in cents per gallon, by method and horizon")
-        cap = (f"Within {FORECAST_TIE * 100:.0f}% of naive counts as a tie "
+        cap = (f"Within {FORECAST_TIE * 100:.0f}% of guessing no change counts as a tie "
                "(noise between evaluation windows).")
         if track_rec and track_rec.get("ratio_by_period"):
-            cap += (" Crude model error as a share of naive, by period: "
+            cap += (" Crude model error as a share of the no-change guess, by period: "
                     + ", ".join(f"{k} {v:.2f}" for k, v in track_rec["ratio_by_period"].items()) + ".")
         st.caption(cap)
 

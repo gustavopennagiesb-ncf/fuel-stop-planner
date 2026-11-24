@@ -1,7 +1,7 @@
 # Fuel Stop Planner
 
 Streamlit app that helps a driver decide **when** to fill up (EIA weekly gasoline prices and WTI crude oil,
-a crude-oil + momentum forecast checked by rolling-origin evaluation against a naive baseline) and **where** to stop on a route
+a crude-oil + momentum forecast checked by rolling-origin evaluation against a "no change" baseline) and **where** to stop on a route
 (stations along the corridor, detour break-even using fuel economy and the value of time),
 whether a stop is **needed at all** and how many gallons to buy given the fuel already in the
 tank, with an **LLM assistant whose numbers are checked against the calculation**.
