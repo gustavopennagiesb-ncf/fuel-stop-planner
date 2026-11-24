@@ -105,8 +105,8 @@ week 104, so each forecast uses only the past). Mean error versus naive, full hi
 | Horizon | Model miss | Naive miss | Ratio |
 |---|---|---|---|
 | 1 week | 5.5 cents | 6.0 cents | 0.91 |
-| 2 weeks | not tabulated | not tabulated | 0.93 |
-| 4 weeks | not tabulated | not tabulated | 0.98 (a tie) |
+| 2 weeks | 9.0 cents | 9.7 cents | 0.93 |
+| 4 weeks | 14.7 cents | 15.1 cents | 0.98 (a tie) |
 
 The edge is real but modest, and it **shrank over time**. Ratio at one week by period: 2005-09
 0.82, 2010-14 0.83, 2015-19 0.95, 2020-26 0.97. In recent years the model is close to a tie with
