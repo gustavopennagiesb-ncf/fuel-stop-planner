@@ -49,10 +49,38 @@ def fetch_all(api_key, duoarea, session=None, **kw):
             return sorted(set(out))
 
 
+WTI_URL = "https://api.eia.gov/v2/seriesid/PET.RWTC.W"
+
+
+def fetch_wti(api_key, session=None) -> pd.Series:
+    """Weekly WTI spot ($/bbl). EIA dates the week by its Friday; shift +3 days to the Monday
+    retail week that follows, so crude is aligned with the pump price it leads."""
+    s = session or requests
+    out, offset = [], 0
+    while True:
+        r = s.get(WTI_URL, params={"api_key": api_key, "offset": offset, "length": 5000,
+                                   "sort[0][column]": "period", "sort[0][direction]": "desc"},
+                  timeout=30)
+        r.raise_for_status()
+        total, rows = parse_rows(r.json())
+        out += rows
+        offset += 5000
+        if offset >= total:
+            break
+    ser = pd.Series({pd.Timestamp(p) + pd.Timedelta(days=3): v for p, v in sorted(set(out))},
+                    dtype=float)
+    return ser.sort_index()
+
+
 def load_live(api_key, areas=("florida", "us"), start="2003-01-01") -> pd.DataFrame:
-    """One column per area, indexed by week (Monday)."""
+    """One column per area, indexed by week (Monday), plus `wti` when the crude fetch works."""
     cols = {}
     for name in areas:
         rows = fetch_all(api_key, AREAS[name], start=start)
         cols[name] = pd.Series({pd.Timestamp(p): v for p, v in rows})
-    return pd.DataFrame(cols).sort_index().rename_axis("period")
+    df = pd.DataFrame(cols).sort_index().rename_axis("period")
+    try:
+        df["wti"] = fetch_wti(api_key).reindex(df.index)
+    except requests.RequestException:
+        pass  # crude is optional: retail still works without it
+    return df

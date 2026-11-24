@@ -38,13 +38,17 @@ def synthetic_stations(path, n=30, seed=7):
 
 
 def synthetic_eia(weeks=1200, seed=11):
-    """Weekly random walk with a seasonal term and a few missing weeks, for Florida and US."""
+    """Weekly random walk with a seasonal term and a few missing weeks, for Florida and US, plus a crude ($/bbl) column that leads the U.S. pump."""
     rng = np.random.default_rng(seed)
     idx = pd.date_range("2003-09-01", periods=weeks, freq="W-MON")
     season = 0.12 * np.sin(2 * np.pi * np.arange(weeks) / 52)
     walk = np.cumsum(rng.normal(0, 0.03, weeks)) + 2.2
     us = np.clip(walk + season, 1.0, None)
     fl = np.clip(us + rng.normal(-0.05, 0.02, weeks) + 0.03 * np.sin(np.arange(weeks) / 9), 1.0, None)
-    df = pd.DataFrame({"florida": fl.round(3), "us": us.round(3)}, index=idx).rename_axis("period")
+    # crude leads the U.S. pump by one week; its own generator keeps the retail values unchanged
+    rng_crude = np.random.default_rng(seed + 1)
+    us_next = np.append(us[1:], us[-1])
+    wti = 42 * (us_next - 0.85) + rng_crude.normal(0, 1.5, weeks)
+    df = pd.DataFrame({"florida": fl.round(3), "us": us.round(3), "wti": wti.round(2)}, index=idx).rename_axis("period")
     df.loc[df.index[[150, 151, 600]], :] = np.nan   # a few missing weeks for the EDA
     return df

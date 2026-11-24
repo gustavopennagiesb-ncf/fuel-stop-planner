@@ -4,7 +4,9 @@ import sys
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 import numpy as np
+import pandas as pd
 import pytest
+import requests
 
 import geo
 from detour import breakeven_miles, net_benefit, rank_stations, reference_price, sensitivity_table
@@ -340,9 +342,49 @@ def test_series_csv_roundtrip(tmp_path):
     p = str(tmp_path / "d" / "eia.csv")
     save_series(df, p)
     back = load_cached_series(p)
-    assert list(back.columns) == ["florida", "us"] and len(back) == 60
+    assert list(back.columns) == ["florida", "us", "wti"] and len(back) == 60
     assert np.allclose(back["us"].dropna(), df["us"].dropna())
     assert load_cached_series(str(tmp_path / "none.csv")) is None
+
+
+# ---- crude (WTI) series ------------------------------------------------------------------
+def test_fetch_wti_shifts_friday_to_monday():
+    payload = {"response": {"total": "2", "data": [
+        {"period": "2026-11-13", "value": "90.78"}, {"period": "2026-11-06", "value": "95.97"}]}}
+
+    class Resp:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return payload
+
+    class Sess:
+        def get(self, url, params=None, timeout=None):
+            return Resp()
+
+    s = eia.fetch_wti("k", session=Sess())
+    assert list(s.index) == [pd.Timestamp("2026-11-09"), pd.Timestamp("2026-11-16")]
+    assert list(s.values) == [95.97, 90.78]
+
+
+def test_load_live_survives_a_crude_failure(monkeypatch):
+    rows = [("2026-11-02", 3.0), ("2026-11-09", 3.1)]
+    monkeypatch.setattr(eia, "fetch_all", lambda *a, **k: rows)
+
+    def boom(*a, **k):
+        raise requests.ConnectionError("down")
+    monkeypatch.setattr(eia, "fetch_wti", boom)
+    df = eia.load_live("k")
+    assert list(df.columns) == ["florida", "us"]
+
+
+def test_synthetic_crude_leads_the_synthetic_pump():
+    df = fixtures.synthetic_eia()
+    assert lagged_corr(df.us, df.wti / 42, 2)[1] > 0.3
+    # retail columns must be exactly what they were before wti existed
+    assert round(df.florida.sum(), 3) == 3031.991
+    assert round(df.us.sum(), 3) == 3091.44
 
 
 # ---- a configured provider that fails must say so, not look like "no key" --------------
