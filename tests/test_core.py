@@ -10,7 +10,8 @@ import requests
 
 import geo
 from detour import breakeven_miles, net_benefit, rank_stations, reference_price, sensitivity_table
-from forecast import lagged_corr, rolling_origin_eval, treat_series, weekly_changes_outliers
+from forecast import (SIGNAL_THRESHOLD, crude_model, crude_signal, lagged_corr, monthly_change_profile, naive,
+                      rolling_origin_eval, signal_track_record, treat_series, weekly_changes_outliers)
 from geo import corridor_filter, decode_polyline, encode_polyline, haversine_m, path_length_m
 from llm import AnthropicProvider, GroqProvider, ask, explain, template_explanation, validate
 from providers import eia, fixtures, places, routes
@@ -532,3 +533,57 @@ def test_treat_series_trims_weeks_before_the_series_starts_instead_of_inventing_
     assert rep["n_trimmed"] == 2 and rep["n_missing_filled"] == 1
     assert rep["start"] == "2003-01-20" and len(out) == 4
     assert out.iloc[1] == pytest.approx(3.1)
+
+
+# ---- crude signal --------------------------------------------------------------------
+def _lead_series(n=400, seed=0):
+    rng = np.random.default_rng(seed)
+    c = 2.0 + np.cumsum(rng.normal(0, 0.08, n))
+    p = np.zeros(n)
+    p[0] = 3.0
+    for t in range(1, n):
+        lag = c[t - 1] - c[t - 2] if t >= 2 else 0.0
+        p[t] = p[t - 1] + 0.4 * lag + rng.normal(0, 0.005)
+    return p, c
+
+
+def test_crude_model_beats_naive_when_crude_leads():
+    p, c = _lead_series()
+    res = rolling_origin_eval(p, methods={"naive": naive, "crude": crude_model(c)})
+    assert res["crude"][1]["ratio_to_naive"] < 0.9
+
+
+def test_crude_signal_says_wait_after_a_crude_drop():
+    p, c = _lead_series()
+    c = c.copy()
+    c[-2] = c[-3] - 0.20
+    c[-1] = c[-2] - 0.20
+    sig = crude_signal(p, c)
+    assert sig["verdict"] == "wait"
+    assert sig["forecast"] < -SIGNAL_THRESHOLD
+
+
+def test_crude_signal_needs_enough_history():
+    p, c = _lead_series(50)
+    assert crude_signal(p, c) is None
+
+
+def test_crude_model_skips_weeks_without_crude():
+    p, c = _lead_series()
+    c = c.copy()
+    c[[50, 120, 200, 260, 300]] = np.nan
+    sig = crude_signal(p, c)
+    assert sig is not None and np.isfinite(sig["forecast"])
+
+
+def test_track_record_counts_hits():
+    p, c = _lead_series()
+    rec = signal_track_record(p, c)
+    assert rec["wait"]["n"] > 0
+    assert 0.5 < rec["wait"]["hit"] <= 1
+    assert "ratio_by_period" not in rec
+
+
+def test_monthly_profile_has_twelve_months():
+    prof = monthly_change_profile(fixtures.synthetic_eia()["florida"])
+    assert list(prof.index) == list(range(1, 13))
