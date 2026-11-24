@@ -274,7 +274,7 @@ minutes; and the address autocomplete manages its own billing session.
 
 ## 6. Limitations
 
-- The forecasting result is negative: no method tested beats the naive forecast at one week.
+- The crude-oil model's edge over the naive forecast is small (0.91 at one week) and has faded to about 0.97 since 2020; the four simple methods do not beat naive.
 - The fuel plan rests on assumptions, labelled as such: a reserve of 15% of the tank (at least
   2 gallons), tank sizes estimated from the EPA size class, and one stop per trip (a trip longer
   than a full tank gets a warning, not a multi-stop plan).
