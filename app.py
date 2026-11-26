@@ -1326,10 +1326,11 @@ elif _selected == ":material/analytics: EDA":
                                  labels=dict(us="U.S. price ($/gal)",
                                              florida="Florida price ($/gal)"),
                                  title="Florida vs U.S. price levels",
-                                 opacity=0.5)
-            _fig_sc.add_scatter(x=_x[_mask], y=_m * _x[_mask] + _b,
-                                mode="lines", name="OLS fit",
-                                line=dict(color="red", width=2))
+                                 opacity=0.5, render_mode="svg")
+            # Two end points, drawn after the points: a WebGL scatter would paint over an SVG line.
+            _ends = np.array([_x[_mask].min(), _x[_mask].max()])
+            _fig_sc.add_scatter(x=_ends, y=_m * _ends + _b, mode="lines", name="OLS fit",
+                                line=dict(color="#F5A453", width=2.5))
             st.plotly_chart(_fig_sc, width="stretch",
                             alt="Scatter plot of Florida vs US weekly prices with OLS trendline")
         st.plotly_chart(
