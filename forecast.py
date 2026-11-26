@@ -300,7 +300,11 @@ def timing_facts(sig, rec):
     cents = int(round(sig["forecast"] * 100)) or 0
     out = {"timing_verdict": _VERDICT_WORDS[sig["verdict"]], "next_week_change_cents": cents}
     r = (rec or {}).get(sig["verdict"])
-    if r:
-        out["timing_track_record_pct"] = int(round(r["hit"] * 100))
-        out["timing_track_record_weeks"] = r["n"]
+    if r:  # one sentence, so the model cannot misread the count as "the last N weeks"
+        said, moved = (("wait", "fell") if sig["verdict"] == "wait" else ("fill up now", "rose"))
+        since = (rec or {}).get("since")
+        out["timing_track_record"] = (
+            (f"Since {since} the model" if since else "In past weeks the model")
+            + f" said {said} in {r['n']} weeks; in {int(round(r['hit'] * 100))}% of them the "
+              f"price {moved} the next week.")
     return out

@@ -41,14 +41,15 @@ def test_what_if_prices_the_best_stop_at_other_gallons_and_values_of_time():
 
 def test_timing_facts_carry_the_when_to_fill_up_verdict():
     sig = {"verdict": "wait", "forecast": -0.048, "crude_lag_weeks": 1}
-    rec = {"wait": {"n": 159, "hit": 0.78}, "fill": {"n": 207, "hit": 0.52}}
+    rec = {"wait": {"n": 159, "hit": 0.78}, "fill": {"n": 207, "hit": 0.52}, "since": 2005}
     assert timing_facts(sig, rec) == {
         "timing_verdict": "wait a week if you can",
-        "next_week_change_cents": -5, "timing_track_record_pct": 78,
-        "timing_track_record_weeks": 159}
+        "next_week_change_cents": -5,
+        "timing_track_record": "Since 2005 the model said wait in 159 weeks; in 78% of them "
+                               "the price fell the next week."}
     none = timing_facts({"verdict": "none", "forecast": 0.004, "crude_lag_weeks": 0}, rec)
     assert none["timing_verdict"] == "no clear signal: fill up when you need to"
-    assert none["next_week_change_cents"] == 0 and "timing_track_record_pct" not in none
+    assert none["next_week_change_cents"] == 0 and "timing_track_record" not in none
     assert timing_facts(None, None) == {}
 
 
@@ -81,3 +82,27 @@ def test_the_eda_summary_names_the_method_in_plain_words():
     assert "naive" not in text and "Crude oil + momentum" in text and "guessing no change" in text
     tie = template_eda_summary({**facts, "best_method": "Drift (recent trend)", "best_ratio": 1.01})
     assert "No forecast beats guessing no change" in tie
+
+
+class Recorder:
+    name = "fake"
+
+    def __init__(self):
+        self.prompts = []
+
+    def complete(self, prompt, max_tokens=250):
+        self.prompts.append(prompt)
+        return "Stop at RaceWay."
+
+    def generate(self, facts):
+        return self.complete("explain")
+
+
+def test_every_prompt_tells_the_model_not_to_talk_about_its_instructions():
+    from llm import NO_META
+    rec = Recorder()
+    ask("qa", FACTS, rec, question="why?")
+    ask("eda", {"weeks": 1, "n_missing_filled": 0, "n_outliers_flagged": 0, "latest_florida": 3.39,
+                "corr_changes": 0.8, "best_lag_weeks": 0, "best_method": "x", "best_ratio": 1.0}, rec)
+    assert all(NO_META in p for p in rec.prompts) and len(rec.prompts) == 2
+    assert "instructions" in NO_META
