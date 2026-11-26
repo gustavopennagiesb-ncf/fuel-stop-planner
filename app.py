@@ -457,8 +457,8 @@ h1, h2, h3 {letter-spacing: -0.012em;}
     rgba(30, 34, 41, 0) 55%); border-color: rgba(91, 212, 138, 0.35) !important;}
 .fs-status {font-size: 0.68rem; font-weight: 600; letter-spacing: 0.16em;
     text-transform: uppercase; opacity: 0.6; margin: 0 0 0.45rem 0; text-align: right;}
-/* In the header strip, left of Streamlit's own buttons: it never covers the page content. */
-.st-key-assistant_fab {position: fixed; top: 0.55rem; right: 9rem; z-index: 1000000;
+/* A chat button in the bottom-right corner, on every page. */
+.st-key-assistant_fab {position: fixed; bottom: 1.5rem; right: 1.5rem; z-index: 1000000;
     width: auto !important;}
 .st-key-assistant_fab button {border-radius: 999px !important; background: #6CB4FF !important;
     color: #0F1115 !important; border: none !important; font-weight: 600;
@@ -695,7 +695,7 @@ if _selected == ":material/help: How to use":
         "each price gap.\n"
         "- *Where does the price data come from and is it clean?* → **EDA**: missing-data and "
         "outlier treatment (before/after), distributions and correlations of the EIA series.\n"
-        "- *Explain it in plain words* → the **AI assistant** button at the top right, "
+        "- *Explain it in plain words* → the **AI assistant** button in the bottom-right corner, "
         "on every page: a plain-language explanation and a question box. Every number the model writes is checked against the calculation; if it cannot "
         "be traced, a template is used.\n\n"
         "Data: EIA Open Data API v2 (weekly retail gasoline, JSON) and Google Places/Routes "
@@ -1436,7 +1436,7 @@ elif _selected == ":material/calculate: Sensitivity":
 # ---------------------------------------------------------------- AI explanation
 
 
-# The assistant sits in the top bar of every page. The model only phrases numbers the
+# The assistant sits in the bottom-right corner of every page. The model only phrases numbers the
 # code computed: every answer is validated against `facts`, else a template is used (llm.py).
 def assistant_facts():
     best = ranked[0]
