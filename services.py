@@ -22,21 +22,25 @@ def load_series(provider: str = None):
         if cached is None:
             raise
         return cached, "EIA cached CSV"
-    save_series(df)
-    return df, "EIA live"
+    return save_series(df), "EIA live"
 
 
-def save_series(df, path=CACHE_PATH):
-    """Store the EIA series locally (public US government data, safe to keep in the repo)."""
+def save_series(df, path=None):
+    """Store the EIA series locally (public US government data, safe to keep in the repo) and
+    return what was stored, so a session whose crude fetch failed still gets the cached crude.
+    `path` defaults to CACHE_PATH read at call time, so tests can point it elsewhere."""
+    path = path or CACHE_PATH
     os.makedirs(os.path.dirname(path), exist_ok=True)
     if "wti" not in df.columns:  # crude fetch failed this time: keep the crude weeks already cached
         cached = load_cached_series(path)
         if cached is not None and "wti" in cached:
             df = df.assign(wti=cached["wti"].reindex(df.index))
     df.to_csv(path)
+    return df
 
 
-def load_cached_series(path=CACHE_PATH):
+def load_cached_series(path=None):
+    path = path or CACHE_PATH
     if not os.path.exists(path):
         return None
     return pd.read_csv(path, index_col="period", parse_dates=True)

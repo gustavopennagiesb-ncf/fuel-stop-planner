@@ -287,3 +287,20 @@ def signal_text(sig, rec, gallons):
     track = {"wait": wait_s, "fill": fill_s,
              "none": " ".join(x for x in (wait_s, fill_s) if x)}[sig["verdict"]]
     return {"move": move, "why": why, "track": track}
+
+
+_VERDICT_WORDS = {"wait": "wait a week if you can", "fill": "fill up now",
+                  "none": "no clear signal: fill up when you need to"}
+
+
+def timing_facts(sig, rec):
+    """The When-to-fill-up verdict as facts for the assistant (rounded as the page shows them)."""
+    if not sig:
+        return {}
+    cents = int(round(sig["forecast"] * 100)) or 0
+    out = {"timing_verdict": _VERDICT_WORDS[sig["verdict"]], "next_week_change_cents": cents}
+    r = (rec or {}).get(sig["verdict"])
+    if r:
+        out["timing_track_record_pct"] = int(round(r["hit"] * 100))
+        out["timing_track_record_weeks"] = r["n"]
+    return out

@@ -7,6 +7,8 @@ The default minimum is an assumption: below about 50 cents the saving is not wor
 """
 import re
 
+from detour import net_benefit
+
 MIN_SAVING_DEFAULT = 0.50
 _MD_SPECIAL = re.compile(r"([\\`*_\[\]()#$<>|~])")
 
@@ -95,3 +97,34 @@ def describe_cheapest(station, p_ref, recommended_id=None):
         detail += " This is also the recommended stop."
     return (f"Cheapest gas on this route: {md_escape(station['name'])} at "
             f"${station['price']:.2f}/gal", detail)
+
+
+def cheapest_facts(cheap, best):
+    """Facts about the cheapest station, so the assistant can answer "why not the cheapest?"."""
+    if cheap is None:
+        return {}
+    return {"cheapest_station": cheap["name"], "cheapest_price": round(cheap["price"], 2),
+            "cheapest_net_benefit": round(cheap["net_benefit"], 2),
+            "cheapest_extra_minutes": round(cheap["extra_minutes"], 1),
+            "cheapest_is_best": cheap["id"] == best["id"]}
+
+
+WHAT_IF_GALLONS = (5, 10, 15, 20)
+WHAT_IF_VOT = (0, 10, 19, 30)
+
+
+def what_if(best, p_ref, mpg, value_of_time, gallons, gallons_grid=WHAT_IF_GALLONS,
+            vot_grid=WHAT_IF_VOT):
+    """Net benefit of the recommended stop at other fill sizes and values of time (the current
+    ones are left out), computed here so the assistant never has to do arithmetic."""
+    def nb(g, vot):
+        return round(net_benefit(g, p_ref, best["price"], best["extra_miles"],
+                                 best["extra_minutes"], mpg, vot), 2)
+    now = nb(gallons, value_of_time)
+
+    def row(key, x, value):  # the difference too, so the model never has to subtract
+        return {key: x, "net_benefit": value, "more_than_now": round(value - now, 2)}
+    return {"if_gallons": [row("gallons", g, nb(g, value_of_time))
+                           for g in gallons_grid if g != round(gallons)],
+            "if_value_of_time": [row("value_of_time", v, nb(gallons, v))
+                                 for v in vot_grid if v != round(value_of_time)]}

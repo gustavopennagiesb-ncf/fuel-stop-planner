@@ -9,6 +9,8 @@ import requests
 
 BASE = "https://api.eia.gov/v2/petroleum/pri/gnd/data/"
 AREAS = {"florida": "SFL", "us": "NUS", "miami": "YMIA"}
+# A slow EIA should fall back to the cached CSV quickly instead of holding the page.
+TIMEOUT_S = 10
 
 
 def build_params(api_key, duoarea, product="EPMR", process="PTE", start=None,
@@ -40,7 +42,7 @@ def fetch_all(api_key, duoarea, session=None, **kw):
     s = session or requests
     out, offset = [], 0
     while True:
-        r = s.get(BASE, params=build_params(api_key, duoarea, offset=offset, **kw), timeout=30)
+        r = s.get(BASE, params=build_params(api_key, duoarea, offset=offset, **kw), timeout=TIMEOUT_S)
         r.raise_for_status()
         total, rows = parse_rows(r.json())
         out += rows
@@ -60,7 +62,7 @@ def fetch_wti(api_key, session=None) -> pd.Series:
     while True:
         r = s.get(WTI_URL, params={"api_key": api_key, "offset": offset, "length": 5000,
                                    "sort[0][column]": "period", "sort[0][direction]": "desc"},
-                  timeout=30)
+                  timeout=TIMEOUT_S)
         r.raise_for_status()
         total, rows = parse_rows(r.json())
         out += rows

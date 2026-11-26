@@ -29,7 +29,7 @@ import recommend
 import trip_input as ti
 from detour import (DEFAULTS, breakeven_miles, rank_stations, reference_price,
                     sensitivity_table)
-from forecast import (METHODS, SIGNAL_THRESHOLD, crude_model, lagged_corr,
+from forecast import (METHODS, SIGNAL_THRESHOLD, crude_model, lagged_corr, timing_facts,
                       monthly_change_profile, rolling_origin_eval, signal_and_record,
                       signal_text, signed_cents,
                       treat_series)
@@ -1296,14 +1296,21 @@ elif _selected == ":material/analytics: EDA":
             icon=":material/lightbulb:")
 
         # ---- AI summary -----------------------------------------------------
-        ev_eda = rolling_origin_eval(clean.to_numpy())
+        # The same test as When to fill up, including the crude-oil model when crude is available.
+        _eda_crude = ((series["wti"].reindex(clean.index) / 42.0).to_numpy()
+                      if "wti" in series and series["wti"].reindex(clean.index).notna().any()
+                      else None)
+        _eda_methods = dict(METHODS)
+        if _eda_crude is not None:
+            _eda_methods["crude"] = crude_model(_eda_crude)
+        ev_eda = _forecast_eval(clean.to_numpy(), _eda_methods, _eda_crude)
         best_m = min((m for m in ev_eda if m != "naive"),
                      key=lambda m: ev_eda[m][1]["ratio_to_naive"])
         eda_facts = {"weeks": len(d), "n_missing_filled": rep["n_missing_filled"],
                      "n_outliers_flagged": rep["n_outliers_flagged"],
                      "latest_florida": round(float(clean.iloc[-1]), 2),
                      "corr_changes": round(float(corr_d), 2), "best_lag_weeks": best_lag,
-                     "best_method": best_m,
+                     "best_method": {**FORECAST_NAMES, "crude": "Crude oil + momentum"}[best_m],
                      "best_ratio": round(ev_eda[best_m][1]["ratio_to_naive"], 2)}
         st.markdown("**AI summary of this analysis**")
         eda_llm = _llm_provider()
@@ -1373,7 +1380,19 @@ def assistant_facts():
         facts["arrive_gal"] = round(fplan["arrive_gal"], 1)
         if _app_chose:
             facts["gallons_to_buy"] = g
+    facts.update(recommend.cheapest_facts(cheap, best))
+    facts.update(recommend.what_if(best, p_ref, mpg, vot, g))
+    facts.update(_timing_facts())
     return facts
+
+
+def _timing_facts():
+    """The When-to-fill-up verdict for the assistant (same cached computation as that page)."""
+    fl = series["florida"].dropna()
+    if "wti" not in series or not series["wti"].reindex(fl.index).notna().any():
+        return {}
+    crude = (series["wti"].reindex(fl.index) / 42.0).to_numpy()
+    return timing_facts(*_signal_and_record(fl.to_numpy(), crude, tuple(fl.index)))
 
 
 def show_reply(msg):

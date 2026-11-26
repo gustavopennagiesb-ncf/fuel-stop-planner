@@ -73,3 +73,13 @@ def test_each_answer_reports_how_many_numbers_were_traced(monkeypatch):
     hallucination measurable, so the assistant must keep showing it."""
     app = click(run_app(monkeypatch, key_works=True), "Explain this recommendation")
     assert any("All numbers traced" in m.value for m in app.markdown)
+
+
+def test_the_assistant_knows_the_cheapest_station_the_what_ifs_and_the_timing(monkeypatch):
+    """A live test found evasive answers to "why not the cheapest?", "what if 15 gallons?" and
+    "fill up now or wait?": the facts the model gets must carry all three."""
+    app = run_app(monkeypatch, key_works=True)
+    facts = next(j.value for j in app.json if "best_station" in str(j.value))
+    facts = facts if isinstance(facts, dict) else __import__("json").loads(facts)
+    assert {"cheapest_station", "cheapest_net_benefit", "if_gallons", "if_value_of_time",
+            "timing_verdict", "next_week_change_cents"} <= set(facts)

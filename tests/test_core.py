@@ -694,3 +694,22 @@ def test_save_series_keeps_the_cached_crude_when_the_new_fetch_lacks_it(tmp_path
     assert "wti" in back and np.allclose(back["wti"].dropna(), df["wti"].loc[back.index].dropna())
     save_series(df.assign(wti=1.0), p)  # a fresh crude column replaces the cache
     assert (load_cached_series(p)["wti"] == 1.0).all()
+
+
+def test_a_live_load_without_crude_uses_the_cached_crude_in_the_session(tmp_path, monkeypatch):
+    """EIA can answer for retail and time out for crude: the page must still get the crude
+    weeks saved earlier, not only the file on disk."""
+    import config
+    import services
+    df = fixtures.synthetic_eia().head(60)
+    p = str(tmp_path / "eia.csv")
+    services.save_series(df, p)
+    monkeypatch.setattr(services, "CACHE_PATH", p)
+    monkeypatch.setattr(config, "EIA_API_KEY", "k")
+    monkeypatch.setattr(eia, "load_live", lambda key: df.drop(columns="wti"))
+    out, label = services.load_series(provider="google")
+    assert label == "EIA live" and "wti" in out and out["wti"].notna().any()
+
+
+def test_eia_requests_fail_fast():
+    assert eia.TIMEOUT_S <= 10
