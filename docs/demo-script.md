@@ -13,6 +13,8 @@ hold the same text; this file adds timing and the click-by-click demo.
    (the first load can take 20–30 s when EIA is slow; after that it is cached).
 3. Leave the app **empty** (do not choose a route yet: the demo starts from the empty app).
 4. Open the slides in presenter view; keep the app in a second tab.
+5. The day before (Nov 30), run **Tampa → Orlando** once to check that the recommended stop still
+   saves money and the cheapest station is still a different one (each search costs a few cents).
 
 If the Wi-Fi fails during the demo: stop the app and run
 `FUEL_DEMO_TRIP=1 .venv/bin/streamlit run app.py` (synthetic data, opens with the demo trip
@@ -30,7 +32,7 @@ already chosen). Say once that it is synthetic data; the badge in the sidebar sa
 | 6 | Florida moves with the whole U.S. | 1:00 | 5:30 |
 | 7 | Crude oil moves first; spring costs more | 1:00 | 6:30 |
 | 8 | What a stop really saves | 1:30 | 8:00 |
-| 9 | Sarasota → Orlando, real data (then switch to the app) | 5:30 | 13:30 |
+| 9 | Tampa → Orlando, real data (then switch to the app) | 5:30 | 13:30 |
 | — | Close and questions | 1:30 | 15:00 |
 
 ---
@@ -85,14 +87,15 @@ from February to April and fall from October to December."
 
 "This is the whole idea in one formula. A cheaper station saves the price gap times the gallons.
 But you pay twice for the detour: the fuel to get there, and your time. In this real example,
-Circle K is 30 cents cheaper, so the sign promises $3. After 21 cents of fuel and $2.12 of time —
+Circle K is 30 cents cheaper, so the sign promises $3. (This example is from a Sarasota → Orlando
+run; the demo uses Tampa → Orlando.) After 21 cents of fuel and $2.12 of time —
 6.7 minutes at $19 an hour — the real saving is 67 cents."
 
 ## 9. Live demo (5:30) — switch to the app
 
 Say: "The app opens empty, so you can see every choice change it."
 
-1. **Choose the route (1:00).** Open **Where are you going?** Type `Sarasota` and **click the
+1. **Choose the route (1:00).** Open **Where are you going?** Type `Tampa` and **click the
    suggestion**; type `Orlando` and **click the suggestion**. Scroll to the bottom of the box and
    press **Find stations**. While it loads (about 20 s): "It asks Google for the route, then for
    the stations along it, and measures the real detour of the most promising ones." The summary
@@ -101,7 +104,12 @@ Say: "The app opens empty, so you can see every choice change it."
    or type its mpg. The recommendation and the map appear. Point at the green card: station,
    price, what it saves, detour.
 3. **Cheapest vs best (1:00).** Scroll to the cheapest-station card: "This is the cheapest sign,
-   but after the detour it saves less, or even costs money."
+   but after the detour it saves less, or even costs money." (On Nov 26 the recommended stop was a
+   Chevron at $3.20 saving $0.80 after a 1-minute measured detour, while the cheapest station, a
+   RaceTrac at $3.04, lost money once the detour counted. Prices change daily: check the route the
+   day before.)
+   - *For a bigger number:* set **Gallons to buy** in the sidebar to 15; the same price gap is
+     then worth more (about $1.40 on Nov 26's prices).
 4. **Fuel gauge (1:15).** Open **How much fuel do you have?** → Fuel gauge. Set **F**: "No stop
    needed." Set **1/4**: "Now it only suggests stations I can reach before my reserve, and how
    many gallons to buy."
