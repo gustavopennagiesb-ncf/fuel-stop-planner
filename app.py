@@ -126,7 +126,8 @@ def car_lookup():
     return fe_vehicle(versions[label]) if label else None
 
 
-def slider_with_number(label, lo, hi, default, step, key, help=None, disabled: bool = False):
+def slider_with_number(label, lo, hi, default, step, key, help=None, disabled: bool = False,
+                       on_change=None):
     """A slider plus a box to type the exact value. The slider's own session-state `key` is the
     value everyone reads; the box (`{key}_num`) mirrors it and, when typed into, writes back to
     it (clamped to the slider's range). Setting either from elsewhere, e.g. the car lookup
@@ -138,12 +139,14 @@ def slider_with_number(label, lo, hi, default, step, key, help=None, disabled: b
         v = st.session_state.get(num_key)
         if v is not None:
             st.session_state[key] = min(hi, max(lo, float(v)))
+        if on_change:
+            on_change()
 
     st.markdown(f':small[{label.replace("$", "\\$")}]', help=help)
     left, right = st.columns([3, 2], vertical_alignment="center")
     with left:
         value = st.slider(label, lo, hi, step=step, key=key, help=help,
-                          label_visibility="collapsed", disabled=disabled)
+                          label_visibility="collapsed", disabled=disabled, on_change=on_change)
     st.session_state[num_key] = value
     with right:
         st.number_input(f"{label}: exact value", lo, hi, step=step, key=num_key,
@@ -152,6 +155,31 @@ def slider_with_number(label, lo, hi, default, step, key, help=None, disabled: b
 
 
 st.session_state.setdefault("mpg", DEFAULTS["mpg"])
+# The app opens with nothing chosen (config.DEMO_TRIP starts from the demo trip instead): the
+# route counts once "Find stations" is pressed, the car once it is looked up or its mpg is set.
+if config.DEMO_TRIP and "car_set" not in st.session_state:
+    st.session_state["car_set"] = True
+    st.session_state.setdefault("trip_applied", dict(ti.DEFAULT))
+_RESET_KEYS = ("trip_applied", "trip_origin_text", "trip_destination_text", "trip_origin_pick",
+               "trip_destination_pick", "my_location", "my_location_accuracy",
+               "my_location_error", "car_set", "mpg", "mpg_num", "mpg_applied", "tank",
+               "tank_applied", "car_year", "car_make", "car_model", "car_version", "epa_kind",
+               "fuel_input_mode", "fuel_level_eighths", "fuel_miles_left", "gallons_manual",
+               "gallons", "gallons_num", "_price_df", "price_editor", "assistant_chat",
+               "fuel_grade")
+
+
+def start_over():
+    """Back to the empty app: no route, no car, no fuel level (settings like value of time stay)."""
+    for k in _RESET_KEYS:
+        st.session_state.pop(k, None)
+    st.session_state["car_set"] = False
+
+
+def car_chosen():
+    st.session_state["car_set"] = True
+
+
 GAUGE_LEVELS = ["E", "1/8", "1/4", "3/8", "1/2", "5/8", "3/4", "7/8", "F"]
 
 
@@ -184,7 +212,8 @@ def address_input(name, label, default_text):
             st.rerun()
         picked = st.session_state.get(f"{key}_pick")
         st.caption(f"Selected: {recommend.md_escape(picked['label'])}" if picked
-                   else f"Selected: {default_text} (type above and pick a suggestion to change)")
+                   else f"Selected: {default_text} (type above and pick a suggestion to change)"
+                   if default_text else "Type an address and pick a suggestion.")
         return picked or ti.text_place(default_text)
     return ti.text_place(st.text_input(label, default_text, key=f"{key}_text"))
 
@@ -193,10 +222,8 @@ origin = destination = None
 # The choices (popovers) sit on the left and a summary of them on the right, so the answer
 # starts near the top of the page instead of below two tall cards.
 trip_strip = st.container(border=True, key="trip_strip")
-trip_strip.html('<p class="fs-step"><b>Start here</b> · Tell the app where you are going and pick '
-                'your car. ' + ("Press Find stations to search." if provider == "google"
-                                and config.GOOGLE_API_KEY else
-                                "The recommendation below updates on its own.") + '</p>')
+trip_strip.html('<p class="fs-step"><b>Start here</b> · Tell the app where you are going '
+                '(press Find stations) and pick your car.</p>')
 strip_left, strip_right = trip_strip.columns([2, 3], gap="large")
 strip_left.html('<p class="fs-panel-label">Your choices</p>')
 choices = strip_left.container(key="trip_choices", gap="small")
@@ -207,7 +234,7 @@ with choices.popover("Where are you going?", icon=":material/edit_location_alt:"
     corridor_help = ("How far from your route a station can be and still be listed. For example, "
                      "3 km each side searches a 6 km wide strip along the route.")
     if provider == "google" and config.GOOGLE_API_KEY:
-        applied = st.session_state.setdefault("trip_applied", dict(ti.DEFAULT))
+        applied = st.session_state.get("trip_applied")
         mine = st.session_state.get("my_location")
         if mine:
             accuracy = st.session_state.get("my_location_accuracy")
@@ -229,15 +256,18 @@ with choices.popover("Where are you going?", icon=":material/edit_location_alt:"
                 st.warning(st.session_state["my_location_error"])
         if st.session_state.get("suggestions_error"):
             st.warning(st.session_state["suggestions_error"])
+        _demo = config.DEMO_TRIP
         origin_place = ti.location_place(mine) if mine else address_input(
-            "origin", "Origin", ti.DEFAULT["origin"]["label"])
+            "origin", "Origin", ti.DEFAULT["origin"]["label"] if _demo else "")
         destination_place = address_input("destination", "Destination",
-                                          ti.DEFAULT["destination"]["label"])
+                                          ti.DEFAULT["destination"]["label"] if _demo else "")
         with st.popover("Search settings", icon=":material/tune:"):
             corridor = st.number_input(
                 "Search corridor width (km each side)", 1.0, 10.0, 3.0, 0.5,
                 key="buffer_km", help=corridor_help)
-        if origin_place is None or destination_place is None:
+        if origin_place is None and destination_place is None and not applied:
+            st.caption("Type where you start and where you are going, then press Find stations.")
+        elif origin_place is None or destination_place is None:
             st.warning("The origin and the destination cannot be empty.")
         else:
             pending = {"origin": origin_place, "destination": destination_place,
@@ -245,15 +275,20 @@ with choices.popover("Where are you going?", icon=":material/edit_location_alt:"
             pressed = st.button("Find stations", type="primary", icon=":material/search:")
             if pressed:
                 applied = st.session_state["trip_applied"] = pending
-            elif ti.changed(pending, applied):
+            elif applied and ti.changed(pending, applied):
                 st.caption("You changed the trip. Press Find stations to search with the new "
                            "origin, destination or corridor.")
-        origin = ti.route_point(applied["origin"])
-        destination = ti.route_point(applied["destination"])
-        buffer_km = applied["corridor"]
+        if applied:
+            origin = ti.route_point(applied["origin"])
+            destination = ti.route_point(applied["destination"])
+            buffer_km = applied["corridor"]
+        else:
+            buffer_km = corridor
     else:
         st.caption("Synthetic test mode: the route is always Sarasota to Orlando. Typing your own "
                    "trip and using your current location need PROVIDER=google (live route data).")
+        if st.button("Find stations", type="primary", icon=":material/search:"):
+            st.session_state["trip_applied"] = dict(ti.DEFAULT)
         with st.popover("Search settings", icon=":material/tune:"):
             buffer_km = st.number_input(
                 "Search corridor width (km each side)", 1.0, 10.0, 3.0, 0.5,
@@ -288,12 +323,16 @@ with choices.popover("Pick your car", icon=":material/directions_car:", width="s
         if looked_up and st.session_state.get("mpg_applied") != (car["id"], kind):
             st.session_state["mpg"] = min(60.0, max(10.0, round(looked_up * 2) / 2))
             st.session_state["mpg_applied"] = (car["id"], kind)
+            st.session_state["car_set"] = True
         if car.get("vclass") and st.session_state.get("tank_applied") != car["id"]:
             st.session_state["tank"] = fuelplan.tank_for_class(car["vclass"])
             st.session_state["tank_applied"] = car["id"]
         st.caption(f"{car['label']}: city {car['city']}, combined {car['combined']}, "
                    f"highway {car['highway']} mpg (EPA label values; real mileage varies).")
-    mpg = slider_with_number("Fuel economy (mpg)", 10.0, 60.0, DEFAULTS["mpg"], 0.5, "mpg")
+    mpg = slider_with_number("Fuel economy (mpg)", 10.0, 60.0, DEFAULTS["mpg"], 0.5, "mpg",
+                             on_change=car_chosen)
+    if not st.session_state.get("car_set"):
+        st.caption("Look up your car above, or set its mpg, to use it.")
     st.session_state.setdefault("tank", 13.0)
     tank = st.number_input("Tank size (gallons)", min_value=5.0, max_value=40.0, step=0.5,
                            key="tank")
@@ -325,19 +364,29 @@ with choices.popover("How much fuel do you have?", icon=":material/local_gas_sta
                    "to buy.")
 
 
+choices.button("Start over", icon=":material/restart_alt:", type="tertiary",
+               on_click=start_over, help="Clear the route, the car and the fuel level.")
+_trip_set = bool(st.session_state.get("trip_applied"))
+_car_set = bool(st.session_state.get("car_set"))
+_ready = _trip_set and _car_set
+
+
 def chip(label, value, kind=""):
     return (f'<div class="fs-chip {kind}"><small>{html.escape(label)}</small>'
             f'<b>{html.escape(value)}</b></div>')
 
 
-_trip_labels = (st.session_state.get("trip_applied", ti.DEFAULT)
+_trip_labels = (st.session_state.get("trip_applied")
                 if provider == "google" and config.GOOGLE_API_KEY else ti.DEFAULT)
+_unset = "muted"
 trip_chips.html('<div class="fs-chips">'
-                + chip("Route", f'{_trip_labels["origin"]["label"]} → '
-                                f'{_trip_labels["destination"]["label"]}', "wide")
-                + chip("Car", f"{mpg:.1f} mpg")
-                + chip("Tank", f"{tank:g} gal")
-                + chip("Range", f"about {tank * mpg:.0f} mi")
+                + (chip("Route", f'{_trip_labels["origin"]["label"]} → '
+                                 f'{_trip_labels["destination"]["label"]}', "wide")
+                   if _trip_set else chip("Route", "Not set", "wide " + _unset))
+                + (chip("Car", f"{mpg:.1f} mpg") if _car_set else chip("Car", "Not set", _unset))
+                + (chip("Tank", f"{tank:g} gal") if _car_set else chip("Tank", "Not set", _unset))
+                + (chip("Range", f"about {tank * mpg:.0f} mi") if _car_set
+                   else chip("Range", "Not set", _unset))
                 + chip("Fuel now", "Not set" if fuel_mode is None else
                        f"{gauge_label} tank" if fuel_mode == "gauge" else
                        f"{fuel_value:.0f} mi to reserve", "muted" if fuel_mode is None else "")
@@ -505,11 +554,15 @@ def cached_trip(p, o, d, buf, ft="REGULAR_UNLEADED"):
 
 series, series_label = cached_series(provider)
 _ft = _FUEL_TYPE.get(st.session_state.get("fuel_grade", "Regular"), "REGULAR_UNLEADED")
-try:
-    trip = cached_trip(provider, origin, destination, buffer_km * 1000, _ft)
-except Exception as e:  # network or key problems should not crash the demo
-    st.error(f"Could not load the trip ({e}). Falling back to fixture data.")
-    trip = cached_trip("fixture", None, None, buffer_km * 1000, _ft)
+if not _trip_set:  # nothing searched yet: an empty trip keeps the shared computation harmless
+    trip = {"mode": "google" if provider == "google" and config.GOOGLE_API_KEY else "fixture",
+            "stations": [], "path": [], "warnings": []}
+else:
+    try:
+        trip = cached_trip(provider, origin, destination, buffer_km * 1000, _ft)
+    except Exception as e:  # network or key problems should not crash the demo
+        st.error(f"Could not load the trip ({e}). Falling back to fixture data.")
+        trip = cached_trip("fixture", None, None, buffer_km * 1000, _ft)
 
 
 
@@ -610,7 +663,7 @@ _applied = st.session_state.get("trip_applied", ti.DEFAULT) if live else ti.DEFA
 _route = f'{_applied["origin"]["label"]} → {_applied["destination"]["label"]}'
 _dest = _applied["destination"]["label"] or "your destination"
 _n_priced = sum(1 for s in priced if s.get("price") is not None)
-_status = [f"{len(_stations)} stations", f"{_n_priced} priced",
+_status = ["no route yet"] if not _trip_set else [f"{len(_stations)} stations", f"{_n_priced} priced",
            st.session_state.get("fuel_grade") or "Regular",
            "synthetic data" if SYNTHETIC else "live data"]
 status_line.html('<p class="fs-status">' + " · ".join(html.escape(x) for x in _status) + "</p>")
@@ -621,12 +674,14 @@ _selected = st.session_state.get("main_tabs", _NAV[0])
 if _selected == ":material/help: How to use":
     st.subheader("How to use this app")
     st.markdown(
-        "**Start here:** the strip at the top of the page has three buttons. *Where are you "
-        "going?* sets the route, *Pick your car* sets your mpg, tank and fuel grade, and *How "
+        "**Start here:** the app opens empty. The strip at the top of the page has three "
+        "buttons. *Where are you going?* sets the route (press *Find stations*), *Pick your "
+        "car* sets your mpg, tank and fuel grade (look the car up or set its mpg), and *How "
         "much fuel do you have?* (fuel gauge or miles to the reserve light) lets the app tell "
         "you whether you need to stop at all and how many gallons to buy. The sidebar holds the "
         "fill-up and time settings (gallons, value of your time, speed). Hover the small (?) "
-        "next to a control for a tip. Every page reads those values.\n\n"
+        "next to a control for a tip. Every page reads those values. *Start over* clears the "
+        "route, the car and the fuel level.\n\n"
         "**Which tab should I open?**\n"
         "- *I am on a trip and want the best station on the way* → **Where to stop**. Edit any "
         "price in the table (typed prices always work). The app ranks stations by net benefit: "
@@ -687,7 +742,29 @@ def maps_buttons(best, live):
                    "synthetic test mode because its stations are made up.")
 
 
-if _selected == ":material/local_gas_station: Where to stop":
+NOT_READY = "Choose where you are going and your car first, in the panel at the top."
+
+
+def welcome():
+    """Where to stop before anything is chosen: the two steps, ticked as they are done."""
+    with st.container(border=True, key="welcome"):
+        st.html('<p class="fs-kicker fs-kicker-blue">Start here</p>')
+        st.header("Choose where you are going and your car", anchor=False)
+        st.markdown("Then the app finds the stations on your route and works out which one "
+                    "saves you the most after the detour.")
+        for done, step in ((_trip_set, "**1. Where are you going?** Type the start and the "
+                                       "destination, then press *Find stations*."),
+                           (_car_set, "**2. Pick your car.** Look it up by year, make and "
+                                      "model, or set its mpg.")):
+            st.markdown((":green[:material/check_circle:] " if done
+                         else ":gray[:material/radio_button_unchecked:] ") + step)
+        st.caption("Optional: *How much fuel do you have?* lets the app say whether you need to "
+                   "stop at all and how many gallons to buy.")
+
+
+if _selected == ":material/local_gas_station: Where to stop" and not _ready:
+    welcome()
+elif _selected == ":material/local_gas_station: Where to stop":
     answer = st.container()  # the answer, filled below once the prices are known
     with st.expander("Edit prices and settings", icon=":material/tune:"):
         st.number_input(
@@ -1055,7 +1132,7 @@ elif _selected == ":material/calendar_month: When to fill up":
             verdict = sig["verdict"]
             st.header({"wait": "Wait a week if you can", "fill": "Fill up now",
                        "none": "No clear signal: fill up when you need to"}[verdict], anchor=False)
-            txt = signal_text(sig, track_rec, gallons_used)
+            txt = signal_text(sig, track_rec, gallons_used if _ready else 0)
             move, why, track = txt["move"], txt["why"], txt["track"]
             late = sig.get("crude_lag_weeks") == 1
             st.markdown(f"{move} {why}" + (f"\n\n{track}" if track else ""))
@@ -1328,6 +1405,10 @@ elif _selected == ":material/analytics: EDA":
             st.json(eda_facts)
 
 # ---------------------------------------------------------------- sensitivity
+elif _selected == ":material/calculate: Sensitivity" and not _ready:
+    page_question("How many extra miles of detour is a price gap worth?",
+                  "At your mpg (Pick your car) and value of time (sidebar).")
+    st.info(NOT_READY, icon=":material/route:")
 elif _selected == ":material/calculate: Sensitivity":
     page_question("How many extra miles of detour is a price gap worth?",
                   "At your mpg (Pick your car) and value of time (sidebar).")
@@ -1442,6 +1523,9 @@ with st.container(key="assistant_fab"):
         if not ranked and _none_reachable:
             st.info("None of the listed stations is reachable before your reserve, so there is "
                     "nothing to explain yet.")
+        elif not _ready:
+            st.info("Choose the route and your car first (the panel at the top), and I can "
+                    "explain the recommendation.", icon=":material/route:")
         elif not ranked:
             st.info("Add at least one station price first.")
         else:

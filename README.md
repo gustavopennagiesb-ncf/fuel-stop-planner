@@ -50,8 +50,12 @@ Needs **Python 3.11 or newer** (built and tested on 3.12; the tests read the the
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 .venv/bin/streamlit run app.py        # PROVIDER=fixture by default
-.venv/bin/python -m pytest -q         # 349 tests, no network and no keys
+.venv/bin/python -m pytest -q         # 400 tests, no network and no keys
 ```
+
+The app opens empty: choose the route (press *Find stations*) and your car to see the
+recommendation; *Start over* clears them. `FUEL_DEMO_TRIP=1` opens with the demo trip
+(Sarasota → Orlando, 27.2 mpg) already chosen.
 
 ## Run with real data
 ```bash

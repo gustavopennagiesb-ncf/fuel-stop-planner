@@ -460,3 +460,12 @@ def test_the_florida_comparison_is_said_once(monkeypatch):
     app, _ = make_app(monkeypatch, stations=crafted())
     mentions = [c.value for c in app.caption if "Florida average" in c.value]
     assert len(mentions) == 1
+
+
+def test_the_empty_app_makes_no_paid_call_until_find_stations(monkeypatch):
+    """Opening the app with nothing chosen must not search Google (each search is billed)."""
+    import config
+    monkeypatch.setattr(config, "DEMO_TRIP", False)
+    app, calls = make_app(monkeypatch, mode="google")
+    assert calls == [] and not app.exception
+    assert any("press Find stations" in c.value for c in app.caption)

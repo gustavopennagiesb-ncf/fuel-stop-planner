@@ -11,3 +11,6 @@ MAX_PLACES_CALLS = int(os.environ.get("MAX_PLACES_CALLS", "6"))  # per search, p
 MAX_ROUTE_CALLS = int(os.environ.get("MAX_ROUTE_CALLS", "10"))  # stations measured per trip, 2 calls each
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")        # free-tier LLM; used when set
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")  # fallback when Groq key absent
+# The app opens with no route and no car. FUEL_DEMO_TRIP=1 (and the test suite) starts from the
+# demo trip instead: Sarasota → Orlando with a 27.2 mpg car already chosen.
+DEMO_TRIP = os.environ.get("FUEL_DEMO_TRIP") == "1"
